@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { gunzipSync, gzipSync } from "node:zlib";
 import type { Connect, Plugin } from "vite";
 
 /** Same basename as Zustand persist key `name` in `quoteStore.ts`. */
@@ -8,35 +9,71 @@ export const QUOTE_PERSIST_FILE = "marketing-quote-v1.json";
 const persistDir = path.resolve(process.cwd(), "data");
 const persistPath = path.join(persistDir, QUOTE_PERSIST_FILE);
 const backupDir = path.join(persistDir, "backups");
-const MAX_BACKUPS = 20;
+const MAX_BACKUPS = 5;
+const BACKUP_PREFIX = "marketing-quote-";
+const BACKUP_JSON_SUFFIX = ".json";
+const BACKUP_GZIP_SUFFIX = ".json.gz";
 
 function writeTimestampedBackup(body: string) {
   try {
     fs.mkdirSync(backupDir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    fs.writeFileSync(path.join(backupDir, `marketing-quote-${stamp}.json`), body, "utf8");
-    const files = fs
-      .readdirSync(backupDir)
-      .filter((f) => f.startsWith("marketing-quote-") && f.endsWith(".json"))
-      .map((f) => ({ f, t: fs.statSync(path.join(backupDir, f)).mtimeMs }))
-      .sort((a, b) => b.t - a.t);
-    for (const old of files.slice(MAX_BACKUPS)) {
-      try {
-        fs.unlinkSync(path.join(backupDir, old.f));
-      } catch {
-        /* ignore */
-      }
-    }
+    fs.writeFileSync(
+      path.join(backupDir, `${BACKUP_PREFIX}${stamp}${BACKUP_GZIP_SUFFIX}`),
+      gzipSync(createCompactBackupBody(body)),
+      "binary",
+    );
+    pruneBackupFiles();
   } catch {
     /* backup failure must not block save */
   }
 }
 
+function createCompactBackupBody(body: string) {
+  try {
+    const root = JSON.parse(body) as { state?: Record<string, unknown> };
+    const state = root && typeof root === "object" ? root.state : null;
+    if (state && typeof state === "object") {
+      delete state.materials;
+    }
+    return JSON.stringify(root);
+  } catch {
+    return body;
+  }
+}
+
+function isBackupFile(name: string) {
+  return (
+    name.startsWith(BACKUP_PREFIX) && (name.endsWith(BACKUP_JSON_SUFFIX) || name.endsWith(BACKUP_GZIP_SUFFIX))
+  );
+}
+
+function isSafeBackupName(name: string) {
+  return /^marketing-quote-[-0-9TZ]+\.json(\.gz)?$/.test(name);
+}
+
+function pruneBackupFiles() {
+  if (!fs.existsSync(backupDir)) return;
+  const files = fs
+    .readdirSync(backupDir)
+    .filter(isBackupFile)
+    .map((f) => ({ f, t: fs.statSync(path.join(backupDir, f)).mtimeMs }))
+    .sort((a, b) => b.t - a.t);
+  for (const old of files.slice(MAX_BACKUPS)) {
+    try {
+      fs.unlinkSync(path.join(backupDir, old.f));
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 function listBackupFiles(): { name: string; mtime: string; size: number }[] {
   if (!fs.existsSync(backupDir)) return [];
+  pruneBackupFiles();
   return fs
     .readdirSync(backupDir)
-    .filter((f) => f.startsWith("marketing-quote-") && f.endsWith(".json"))
+    .filter(isBackupFile)
     .map((f) => {
       const st = fs.statSync(path.join(backupDir, f));
       return { name: f, mtime: st.mtime.toISOString(), size: st.size };
@@ -68,7 +105,7 @@ function persistApiMiddleware(): Connect.NextHandleFunction {
     const backupRead = pathname.match(/^\/api\/quote-persist\/backups\/([^/]+)$/);
     if (backupRead) {
       const name = decodeURIComponent(backupRead[1] ?? "");
-      if (!/^marketing-quote-[-0-9TZ]+\.json$/.test(name)) {
+      if (!isSafeBackupName(name)) {
         res.statusCode = 400;
         res.end("invalid backup name");
         return;
@@ -85,7 +122,9 @@ function persistApiMiddleware(): Connect.NextHandleFunction {
           res.end();
           return;
         }
-        const data = fs.readFileSync(filePath, "utf8");
+        const data = name.endsWith(BACKUP_GZIP_SUFFIX)
+          ? gunzipSync(fs.readFileSync(filePath)).toString("utf8")
+          : fs.readFileSync(filePath, "utf8");
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         res.setHeader("Cache-Control", "no-store");
         res.end(data);
@@ -144,7 +183,8 @@ function persistApiMiddleware(): Connect.NextHandleFunction {
           fs.mkdirSync(persistDir, { recursive: true });
           if (fs.existsSync(persistPath)) {
             try {
-              writeTimestampedBackup(fs.readFileSync(persistPath, "utf8"));
+              const previousBody = fs.readFileSync(persistPath, "utf8");
+              if (previousBody !== body) writeTimestampedBackup(previousBody);
             } catch {
               /* ignore */
             }
