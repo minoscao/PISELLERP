@@ -1,0 +1,112 @@
+/**
+ * 深色毛玻璃全局样式（唯一静态色板兜底）。
+ * ThemeSync 会通过 applyAppearanceToDocument 覆盖同名变量；此处数值须与
+ * applyAppearance.ts 内 DEFAULT_UI_APPEARANCE 保持同步。
+ */
+:root {
+  --app-bg: rgb(13 16 23);
+  --app-surface: rgb(18 22 30);
+  --app-surface-2: rgb(22 27 36);
+  --app-surface-rgb: 18 22 30;
+  --app-surface-2-rgb: 22 27 36;
+  --app-border: rgba(110 72 210 / 0.34);
+  --app-line-subtle: rgba(110 72 210 / 0.14);
+  --app-line-mid: rgba(110 72 210 / 0.22);
+  --app-line-strong: rgba(124 92 230 / 0.3);
+  --app-divider: rgba(110 72 210 / 0.18);
+  --app-header-bg: rgb(15 18 26);
+  --app-text: #d0c4e8;
+  --app-text-muted: #948ab0;
+  --app-text-subtle: #736892;
+  --app-text-rgb: 208 196 232;
+  --app-text-muted-rgb: 148 138 176;
+  --app-text-subtle-rgb: 115 104 146;
+  --app-primary-rgb: 124 108 240;
+  --app-shell-frame-rgb: 90 109 148;
+  --app-primary-hover-rgb: 106 90 220;
+  --app-primary-soft: rgb(30 27 52);
+  --app-primary-tone: #c4b5fd;
+  --app-primary-tone-rgb: 196 181 253;
+  --app-accent-border: rgba(124 108 240 / 0.72);
+  --app-accent-border-rgb: 124 108 240;
+  --app-wire: rgba(110 72 210 / 0.32);
+  --app-wire-soft: rgba(110 72 210 / 0.2);
+  --app-wire-rgb: 105 70 195;
+  --app-panel-bg: rgba(21 27 36 / 0.5);
+  --app-panel-border: rgba(124 92 230 / 0.34);
+  --app-input-bg: rgba(10 14 20 / 0.82);
+  --app-input-border: rgba(110 72 210 / 0.28);
+  --app-input-placeholder: #64748b;
+  --app-info-text: #bae6fd;
+  --app-info-text-rgb: 186 230 253;
+  --app-info-border: rgba(56 189 248 / 0.28);
+  --app-on-primary-rgb: 21 9 31;
+  --app-decor-ring: rgba(124 108 240 / 0.12);
+  --app-radius-sm: 12px;
+  --app-radius-md: 14px;
+  --app-radius-lg: 18px;
+  --app-radius-xl: 22px;
+  --app-radius-2xl: 28px;
+  --app-radius-3xl: 36px;
+  --app-border-hairline: 1px;
+  --app-border-strong: 2px;
+  --app-map-grid-step: 24px;
+  --app-map-chip-bg: rgb(var(--app-surface-2-rgb) / 0.9);
+  --app-map-chip-text: var(--app-text);
+  --app-danger-border: rgba(248 113 113 / 0.28);
+  --app-danger-bg: rgba(48 24 30 / 0.45);
+  --app-danger-text: #e598a8;
+  --app-danger-text-rgb: 229 152 168;
+  --app-danger-ring: rgba(248 113 113 / 0.2);
+  --app-success-border: rgba(74 222 128 / 0.28);
+  --app-success-bg: rgba(16 40 30 / 0.45);
+  --app-success-text: #7dd3b2;
+  --app-success-text-rgb: 125 211 178;
+  --app-success-ring: rgba(74 222 128 / 0.2);
+  --app-warning-border: rgba(251 191 36 / 0.28);
+  --app-warning-bg: rgba(40 32 12 / 0.45);
+  --app-warning-text: #d4b87a;
+  --app-warning-text-rgb: 212 184 122;
+  --app-warning-ring: rgba(251 191 36 / 0.2);
+  --app-map-export-capture-dark: #161b24;
+  --app-map-export-capture-light: #0d1017;
+  --app-overlay-scrim: rgba(6 8 12 / 0.62);
+  --app-glass-blur-header: 21px;
+  --app-glass-blur-panel: 16px;
+  --app-bg-art-opacity: 0;
+}
+
+[data-map-theme="light"] {
+  --app-map-chip-bg: rgb(var(--app-surface-rgb) / 0.94);
+}
+
+[data-theme="light"] body {
+  background-color: var(--app-bg);
+  background-image: radial-gradient(ellipse 100% 55% at 50% 0%, rgb(var(--app-primary-rgb) / 0.07), transparent 52%);
+  background-attachment: fixed;
+}
+
+[data-theme="dark"] body {
+  background-color: var(--app-bg);
+  background-image: radial-gradient(ellipse 120% 70% at 50% -15%, rgb(var(--app-primary-rgb) / 0.12), transparent 55%),
+    radial-gradient(ellipse 80% 55% at 100% 0%, rgb(var(--app-primary-tone-rgb) / 0.06), transparent 50%),
+    radial-gradient(ellipse 70% 50% at 0% 100%, rgb(var(--app-primary-rgb) / 0.05), transparent 48%);
+  background-attachment: fixed;
+}
+
+/** 有底图时 body 只做实色底，主色晕光交给上层半透明壳，避免与照片抢亮度 */
+html[data-theme="dark"][data-bg-art="on"] body,
+html[data-theme="light"][data-bg-art="on"] body {
+  background-image: none;
+}
+
+[data-ui-effect="glass"] .ui-glass-surface {
+  background-color: var(--app-panel-bg);
+}
+
+.app-map-grid-bg {
+  opacity: 0.35;
+  background-image: linear-gradient(to right, var(--app-line-subtle) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--app-line-subtle) 1px, transparent 1px);
+  background-size: var(--app-map-grid-step) var(--app-map-grid-step);
+}

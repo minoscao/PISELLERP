@@ -1,0 +1,66 @@
+@import "./theme/glassApp.css";
+@import "./theme/themeShell.css";
+@import "./theme/uiKit.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design: no visible scrollbars (horizontal or vertical); scrolling still works. */
+@layer base {
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  *::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  color: var(--app-text);
+  @apply antialiased;
+}
+
+@layer base {
+  [data-theme] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(
+      [type="color"]
+    ),
+  [data-theme] textarea,
+  [data-theme] select {
+    border-radius: var(--app-radius-md);
+    border: 1px solid var(--app-input-border);
+    background-color: var(--app-input-bg);
+    color: var(--app-text);
+  }
+  [data-theme] input::placeholder,
+  [data-theme] textarea::placeholder {
+    color: var(--app-input-placeholder);
+  }
+  [data-theme="dark"] select,
+  [data-theme="dark"] option {
+    color-scheme: dark;
+  }
+  [data-theme="dark"] select option,
+  [data-theme="dark"] select optgroup {
+    background-color: rgb(var(--app-surface-2-rgb) / 1);
+    color: rgb(var(--app-text-rgb) / 1);
+  }
+  [data-theme] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(
+      [type="color"]
+    ):focus-visible,
+  [data-theme] select:focus-visible,
+  [data-theme] textarea:focus-visible {
+    outline: 2px solid rgb(var(--app-primary-rgb) / 0.48);
+    outline-offset: 1px;
+    border-color: rgb(var(--app-primary-rgb) / 0.72);
+  }
+}

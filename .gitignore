@@ -1,0 +1,16 @@
+node_modules/
+dist/
+tmp/
+
+data/backups/
+_dbg_img_*.jpeg
+tsconfig.tsbuildinfo
+public/pisellHardwareSeed.json
+Pisell Hardware List.xlsx
+Pisell_Branding Guideline_v03 - 副本.pdf
+
+*.local
+.env
+.env.local
+.env.*.local
+.DS_Store

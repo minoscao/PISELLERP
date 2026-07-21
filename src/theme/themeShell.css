@@ -1,0 +1,78 @@
+/**
+ * 顶栏 / 壳层：毛玻璃强度随 --app-glass-blur-* 变化；背景装饰层在 body::after。
+ */
+[data-ui-effect="glass"] header.app-shell-header {
+  backdrop-filter: saturate(1.35) blur(var(--app-glass-blur-header, 26px));
+  -webkit-backdrop-filter: saturate(1.35) blur(var(--app-glass-blur-header, 26px));
+  background-color: color-mix(in srgb, var(--app-header-bg) 72%, transparent);
+  box-shadow: 0 1px 0 rgb(var(--app-primary-rgb) / 0.08);
+}
+
+[data-ui-effect="glass"] aside.app-primary-nav {
+  backdrop-filter: saturate(1.22) blur(var(--app-glass-blur-header, 26px));
+  -webkit-backdrop-filter: saturate(1.22) blur(var(--app-glass-blur-header, 26px));
+  background-color: color-mix(in srgb, var(--app-header-bg) 68%, transparent);
+  box-shadow: 1px 0 0 rgb(var(--app-primary-rgb) / 0.06);
+}
+
+[data-ui-effect="none"] header.app-shell-header {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background-color: color-mix(in srgb, var(--app-header-bg) 92%, transparent);
+  box-shadow: 0 1px 0 var(--app-line-subtle);
+}
+
+[data-ui-effect="none"] aside.app-primary-nav {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background-color: color-mix(in srgb, var(--app-header-bg) 90%, transparent);
+  box-shadow: 1px 0 0 var(--app-line-subtle);
+}
+
+[data-ui-effect="glass"] .bg-app-panel-bg,
+[data-ui-effect="glass"] .ui-glass-surface {
+  backdrop-filter: saturate(1.22) blur(var(--app-glass-blur-panel, 20px));
+  -webkit-backdrop-filter: saturate(1.22) blur(var(--app-glass-blur-panel, 20px));
+}
+
+[data-ui-effect="none"] .bg-app-panel-bg,
+[data-ui-effect="none"] .ui-glass-surface {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--app-bg-art-opacity, 0);
+  background-image: var(--app-bg-art-url, none);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  mix-blend-mode: var(--app-bg-art-blend, soft-light);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+/** 底图在 body::after；主区域勿再铺实色底，否则毛玻璃永远采样不到照片 */
+html[data-ui-effect="glass"] .ui-app,
+html[data-ui-effect="glass"] main.app-shell-main {
+  background-color: transparent;
+}
+
+html[data-ui-effect="none"] .ui-app,
+html[data-ui-effect="none"] main.app-shell-main {
+  background-color: var(--app-bg);
+}
+
+/** 有装饰底图时减弱页内渐变罩层，让纹理透上来 */
+html[data-bg-art="on"] .ui-page-bg {
+  opacity: 0.48;
+}
