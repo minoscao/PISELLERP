@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { compressImageFileToJpegDataUrl } from "../utils/compressImageFile";
+import { PhotoUploadModal } from "./PhotoUploadModal";
 import { useQuoteStore } from "../store/quoteStore";
 import type { CrmCustomer } from "../types";
 
@@ -148,6 +150,8 @@ export function CrmPanel() {
   const [detailTab, setDetailTab] = useState<"solution" | "info">("solution");
   const [search, setSearch] = useState("");
   const [newIndustry, setNewIndustry] = useState("");
+  const [logoModalOpen, setLogoModalOpen] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
 
   const activeCustomer = customers.find((c) => c.id === activeCustomerId) ?? customers[0] ?? null;
 
@@ -247,22 +251,33 @@ export function CrmPanel() {
                         : "border-app-line-subtle bg-app-surface-2/40 hover:border-app-line-mid hover:bg-app-surface-2"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold">{customer.name}</div>
-                        <div className="mt-1 truncate text-xs text-app-muted">
-                          {customer.industry} · {stageLabel}
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-app-line-subtle bg-app-panel-bg text-sm font-bold text-app-primary">
+                        {customer.logoDataUrl ? (
+                          <img src={customer.logoDataUrl} alt="" className="h-full w-full object-contain p-1" />
+                        ) : (
+                          customer.name.trim().slice(0, 1).toUpperCase()
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold">{customer.name}</div>
+                            <div className="mt-1 truncate text-xs text-app-muted">
+                              {customer.industry} · {stageLabel}
+                            </div>
+                          </div>
+                          <span className={`shrink-0 rounded-full border px-2 py-1 text-[11px] ${status.className}`}>
+                            {status.label}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-app-subtle">
+                          <span className="truncate">Contact: {customer.primaryContactName || "empty"}</span>
+                          <span className="truncate">Plans: {customer.solutionPlanIds.length}</span>
+                          <span className="truncate">Phone: {customer.phone || customer.wechat || "empty"}</span>
+                          <span className="truncate">Next: {customer.nextFollowUpAt || "not set"}</span>
                         </div>
                       </div>
-                      <span className={`rounded-full border px-2 py-1 text-[11px] ${status.className}`}>
-                        {status.label}
-                      </span>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-app-subtle">
-                      <span className="truncate">Contact: {customer.primaryContactName || "empty"}</span>
-                      <span className="truncate">Plans: {customer.solutionPlanIds.length}</span>
-                      <span className="truncate">Phone: {customer.phone || customer.wechat || "empty"}</span>
-                      <span className="truncate">Next: {customer.nextFollowUpAt || "not set"}</span>
                     </div>
                   </button>
                 );
@@ -370,6 +385,57 @@ export function CrmPanel() {
                 <div className="grid gap-4">
                   <div className="rounded-2xl border border-app-panel-border bg-app-panel-bg p-4">
                     <h3 className="mb-4 text-base font-semibold">Basic information</h3>
+                    <div className="mb-4 flex flex-wrap items-center gap-4 rounded-xl border border-app-line-subtle bg-app-surface-2 p-3">
+                      <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-app-line-mid bg-app-panel-bg text-xl font-bold text-app-primary">
+                        {activeCustomer.logoDataUrl ? (
+                          <img src={activeCustomer.logoDataUrl} alt="" className="h-full w-full object-contain p-2" />
+                        ) : (
+                          activeCustomer.name.trim().slice(0, 1).toUpperCase()
+                        )}
+                      </div>
+                      <div className="min-w-[220px] flex-1">
+                        <div className="text-sm font-semibold text-app-text">Customer logo</div>
+                        <p className="mt-1 text-xs text-app-muted">Upload or paste with Ctrl+V in the dialog.</p>
+                      </div>
+                      <PhotoUploadModal
+                        open={logoModalOpen}
+                        onClose={() => setLogoModalOpen(false)}
+                        title="Upload customer logo"
+                        description="Choose an image, or paste a copied image with Ctrl+V."
+                        accept="image/jpeg,image/png,image/webp"
+                        showAiOption={false}
+                        busy={logoBusy}
+                        onConfirmFiles={async (files) => {
+                          const f = files[0];
+                          if (!f) return;
+                          setLogoBusy(true);
+                          try {
+                            const url = await compressImageFileToJpegDataUrl(f, { maxEdge: 900, quality: 0.88 });
+                            patch({ logoDataUrl: url });
+                            setLogoModalOpen(false);
+                          } finally {
+                            setLogoBusy(false);
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={logoBusy}
+                        onClick={() => setLogoModalOpen(true)}
+                        className="rounded-lg border border-app-line-mid px-3 py-2 text-sm font-semibold text-app-text transition hover:bg-app-surface-2 disabled:opacity-50 active:scale-[0.98]"
+                      >
+                        {logoBusy ? "Saving..." : "Upload / paste logo"}
+                      </button>
+                      {activeCustomer.logoDataUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => patch({ logoDataUrl: null })}
+                          className="rounded-lg border border-app-danger-text/40 px-3 py-2 text-sm font-semibold text-app-danger-text transition hover:bg-app-danger-soft active:scale-[0.98]"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
                     <div className="grid gap-4 lg:grid-cols-2">
                       <Field label="Customer name">
                         <TextInput value={activeCustomer.name} onChange={(name) => patch({ name })} />

@@ -386,6 +386,7 @@ export type CrmCustomer = {
   name: string;
   industry: string;
   contact: string;
+  logoDataUrl?: string | null;
   companyLegalName?: string;
   customerType?: "lead" | "prospect" | "customer" | "partner" | "inactive";
   stage?: "new" | "contacted" | "qualified" | "proposal" | "negotiation" | "won" | "lost";
