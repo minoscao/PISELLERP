@@ -21,6 +21,8 @@ const ROWS: [string, string, string][] = [
   ["nav.dragHandle", "Reorder menu", "调整菜单顺序"],
   ["nav.item.erp.title", "ERP", "ERP"],
   ["nav.item.erp.sub", "Stock", "库存"],
+  ["nav.item.crm.title", "CRM", "CRM"],
+  ["nav.item.crm.sub", "Customers & solutions", "客户与方案"],
   ["nav.item.settings.title", "Settings", "设置"],
   ["nav.item.settings.sub", "Theme & company", "主题与企业"],
   ["st.languageTitle", "Interface language", "界面语言"],
@@ -28,6 +30,7 @@ const ROWS: [string, string, string][] = [
   ["tab.enterprise", "Resources & templates", "资源与模板"],
   ["tab.customPlan", "Custom plan", "定制方案"],
   ["tab.erp", "ERP", "ERP"],
+  ["tab.crm", "CRM", "CRM"],
   ["tab.settings", "Settings", "设置"],
 
   ["theme.sectionTitle", "Interface theme", "界面主题"],

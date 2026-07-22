@@ -7,9 +7,9 @@ import type { QuoteTab } from "../types";
 const NAV_COLLAPSED_LS = "marketing-primary-nav-collapsed";
 const NAV_ORDER_LS = "marketing-primary-nav-order";
 
-type PrimaryNavId = Extract<QuoteTab, "erp" | "enterpriseResources" | "customPlan">;
+type PrimaryNavId = Extract<QuoteTab, "crm" | "erp" | "enterpriseResources" | "customPlan">;
 
-const DEFAULT_PRIMARY_ORDER: PrimaryNavId[] = ["customPlan", "enterpriseResources", "erp"];
+const DEFAULT_PRIMARY_ORDER: PrimaryNavId[] = ["customPlan", "crm", "enterpriseResources", "erp"];
 
 type NavIcon = ComponentType<{ className?: string }>;
 
@@ -84,6 +84,26 @@ function IconErp({ className }: { className?: string }) {
   );
 }
 
+function IconCrm({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.65"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3.5" y="5" width="17" height="14" rx="2" />
+      <circle cx="9" cy="10" r="2" />
+      <path d="M6.4 16c.7-1.5 1.65-2.25 2.85-2.25S11.4 14.5 12.1 16" />
+      <path d="M14 9h3.5M14 12h4M14 15h3" />
+    </svg>
+  );
+}
+
 /** 设置：六齿齿轮 + 中心毂（非放射状「太阳」） */
 function IconSettings({ className }: { className?: string }) {
   const teeth = [0, 60, 120, 180, 240, 300] as const;
@@ -140,6 +160,7 @@ function IconRailCollapse({ className }: { className?: string }) {
 }
 
 const NAV_DEFS: Record<PrimaryNavId, NavDef> = {
+  crm: { id: "crm", titleKey: "nav.item.crm.title", subKey: "nav.item.crm.sub", Icon: IconCrm },
   erp: { id: "erp", titleKey: "nav.item.erp.title", subKey: "nav.item.erp.sub", Icon: IconErp },
   enterpriseResources: {
     id: "enterpriseResources",
@@ -163,7 +184,7 @@ const SETTINGS_ITEM: NavDef = {
 };
 
 function normalizePrimaryOrder(raw: unknown): PrimaryNavId[] | null {
-  if (!Array.isArray(raw) || raw.length !== 3) return null;
+  if (!Array.isArray(raw) || raw.length !== DEFAULT_PRIMARY_ORDER.length) return null;
   const allowed = new Set<PrimaryNavId>(DEFAULT_PRIMARY_ORDER);
   const seen = new Set<PrimaryNavId>();
   const out: PrimaryNavId[] = [];

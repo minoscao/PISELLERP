@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AppPrimaryNav } from "./components/AppPrimaryNav";
 import { EnterpriseResourcePanel } from "./components/EnterpriseResourcePanel";
 import { CustomPlanPanel } from "./components/CustomPlanPanel";
+import { CrmPanel } from "./components/CrmPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ErpPanel } from "./components/ErpPanel";
 import { ThemeSync } from "./components/ThemeSync";
@@ -50,6 +51,7 @@ export default function App() {
 
         <main className="app-shell-main min-h-0 flex-1 overflow-hidden">
           {activeTab === "enterpriseResources" && <EnterpriseResourcePanel />}
+          {activeTab === "crm" && <CrmPanel />}
           {activeTab === "customPlan" && <CustomPlanPanel />}
           {activeTab === "erp" && <ErpPanel />}
           {activeTab === "settings" && <SettingsPanel />}

@@ -381,6 +381,16 @@ export type SavedCustomPlan = {
   data: CustomPlanSnapshotData;
 };
 
+export type CrmCustomer = {
+  id: string;
+  name: string;
+  industry: string;
+  contact: string;
+  solutionPlanIds: string[];
+  createdAt: number;
+  updatedAt: number;
+};
+
 /** 报价 PDF 封面装饰（取代原预设模板） */
 export type QuotePdfCoverDecor = "topBar" | "frame" | "none";
 
@@ -551,6 +561,7 @@ export type UiLocale = "en" | "zh";
 export type QuoteTab =
   /** 市场资料（品牌 / 产品）+ 硬件库 + 软件功能 + 服务 */
   | "enterpriseResources"
+  | "crm"
   /** 地图选型 + 方案排版 + 报价 */
   | "customPlan"
   /** ERP：客户 / 库存 / 人事（当前实现库存子模块） */

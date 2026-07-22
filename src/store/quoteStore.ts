@@ -37,6 +37,7 @@ import type {
   ErpHardwareNavSortMode,
   ErpStockMovement,
   QuoteTab,
+  CrmCustomer,
   ResourceLibrarySubTab,
   CustomPlanServiceLine,
   CustomPlanSoftwareLine,
@@ -251,8 +252,36 @@ function notifyCustomPlanWorkspaceChanged(get: () => State) {
   scheduleCustomPlanAutosave(get);
 }
 
+function normalizeCrmCustomer(raw: unknown): CrmCustomer | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Partial<CrmCustomer>;
+  const id = typeof r.id === "string" && r.id.trim() ? r.id : crypto.randomUUID();
+  const now = Date.now();
+  const name = typeof r.name === "string" && r.name.trim() ? r.name.trim() : "New customer";
+  const industry = typeof r.industry === "string" && r.industry.trim() ? r.industry.trim() : "Other";
+  const contact = typeof r.contact === "string" ? r.contact : "";
+  const solutionPlanIds = Array.isArray(r.solutionPlanIds)
+    ? [...new Set(r.solutionPlanIds.filter((x): x is string => typeof x === "string" && !!x))]
+    : [];
+  return {
+    id,
+    name,
+    industry,
+    contact,
+    solutionPlanIds,
+    createdAt: typeof r.createdAt === "number" && Number.isFinite(r.createdAt) ? r.createdAt : now,
+    updatedAt: typeof r.updatedAt === "number" && Number.isFinite(r.updatedAt) ? r.updatedAt : now,
+  };
+}
+
 type State = {
   activeTab: QuoteTab;
+  crmCustomers: CrmCustomer[];
+  activeCrmCustomerId: string | null;
+  addCrmCustomer: (name?: string) => string;
+  updateCrmCustomer: (id: string, patch: Partial<Omit<CrmCustomer, "id" | "createdAt" | "updatedAt">>) => void;
+  deleteCrmCustomer: (id: string) => void;
+  setActiveCrmCustomerId: (id: string | null) => void;
   resourceLibrarySubTab: ResourceLibrarySubTab;
   /** 企业资源：素材库 vs 报价模板搭建器 */
   enterpriseResourceMainTab: EnterpriseResourceMainTab;
@@ -696,6 +725,8 @@ export const useQuoteStore = create<State>()(
   persist(
     (set, get) => ({
       activeTab: "erp",
+      crmCustomers: [],
+      activeCrmCustomerId: null,
       resourceLibrarySubTab: "brandMaterials",
       enterpriseResourceMainTab: "mediaLibrary",
       quoteTemplates: [],
@@ -756,6 +787,57 @@ export const useQuoteStore = create<State>()(
       erpInventoryLines: [],
       erpStockMovements: [],
       bundledHardwareCatalogBuildId: null,
+      addCrmCustomer: (name) => {
+        const now = Date.now();
+        const id = crypto.randomUUID();
+        const customer: CrmCustomer = {
+          id,
+          name: name?.trim() || "New customer",
+          industry: "Other",
+          contact: "",
+          solutionPlanIds: [],
+          createdAt: now,
+          updatedAt: now,
+        };
+        set((s) => ({ crmCustomers: [customer, ...s.crmCustomers], activeCrmCustomerId: id }));
+        flushQuotePersistDebouncedStorageNow();
+        return id;
+      },
+      updateCrmCustomer: (id, patch) => {
+        set((s) => ({
+          crmCustomers: s.crmCustomers.map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  ...patch,
+                  name: patch.name !== undefined ? patch.name.trim() || c.name : c.name,
+                  solutionPlanIds:
+                    patch.solutionPlanIds !== undefined
+                      ? [...new Set(patch.solutionPlanIds.filter(Boolean))]
+                      : c.solutionPlanIds,
+                  updatedAt: Date.now(),
+                }
+              : c,
+          ),
+        }));
+        flushQuotePersistDebouncedStorageNow();
+      },
+      deleteCrmCustomer: (id) => {
+        set((s) => {
+          const next = s.crmCustomers.filter((c) => c.id !== id);
+          return {
+            crmCustomers: next,
+            activeCrmCustomerId: s.activeCrmCustomerId === id ? (next[0]?.id ?? null) : s.activeCrmCustomerId,
+          };
+        });
+        flushQuotePersistDebouncedStorageNow();
+      },
+      setActiveCrmCustomerId: (id) => {
+        set((s) => ({
+          activeCrmCustomerId: id && s.crmCustomers.some((c) => c.id === id) ? id : null,
+        }));
+        flushQuotePersistDebouncedStorageNow();
+      },
       setUiLocale: (l) => set({ uiLocale: l === "zh" ? "zh" : "en" }),
       setUiThemeBundle: (patch) =>
         set((s) => {
@@ -2176,6 +2258,8 @@ export const useQuoteStore = create<State>()(
           erpStockMovements: s.erpStockMovements,
           bundledHardwareCatalogBuildId: s.bundledHardwareCatalogBuildId,
           activeTab: s.activeTab,
+          crmCustomers: s.crmCustomers,
+          activeCrmCustomerId: s.activeCrmCustomerId,
           resourceLibrarySubTab: s.resourceLibrarySubTab,
           customPlanTab: s.customPlanTab,
           customPlanSelectStep: s.customPlanSelectStep,
@@ -2293,6 +2377,7 @@ export const useQuoteStore = create<State>()(
             }
             const stNav = st as {
               activeTab?: unknown;
+              activeCrmCustomerId?: unknown;
               resourceLibrarySubTab?: unknown;
               customPlanTab?: unknown;
               customPlanSelectStep?: unknown;
@@ -2305,8 +2390,19 @@ export const useQuoteStore = create<State>()(
               erpInvSubTab?: unknown;
             };
             const ra = stNav.activeTab;
-            if (ra === "enterpriseResources" || ra === "customPlan" || ra === "erp" || ra === "settings") {
+            if (ra === "enterpriseResources" || ra === "crm" || ra === "customPlan" || ra === "erp" || ra === "settings") {
               next.activeTab = ra;
+            }
+            if (Array.isArray((st as { crmCustomers?: unknown }).crmCustomers)) {
+              next.crmCustomers = ((st as { crmCustomers: unknown[] }).crmCustomers)
+                .map((x) => normalizeCrmCustomer(x))
+                .filter((x): x is CrmCustomer => x !== null);
+            }
+            if (
+              typeof stNav.activeCrmCustomerId === "string" &&
+              next.crmCustomers.some((c) => c.id === stNav.activeCrmCustomerId)
+            ) {
+              next.activeCrmCustomerId = stNav.activeCrmCustomerId;
             }
             const rr = stNav.resourceLibrarySubTab;
             if (rr === "brandMaterials") next.resourceLibrarySubTab = "brandMaterials";
@@ -2623,6 +2719,8 @@ export const useQuoteStore = create<State>()(
         erpStockMovements: s.erpStockMovements,
         bundledHardwareCatalogBuildId: s.bundledHardwareCatalogBuildId,
         activeTab: s.activeTab,
+        crmCustomers: s.crmCustomers,
+        activeCrmCustomerId: s.activeCrmCustomerId,
         resourceLibrarySubTab: s.resourceLibrarySubTab,
         customPlanTab: s.customPlanTab,
         customPlanSelectStep: s.customPlanSelectStep,
@@ -2665,6 +2763,8 @@ export const useQuoteStore = create<State>()(
           companyWebsite?: string;
           uiLocale?: UiLocale;
           uiThemeBundle?: AppUiThemeBundle;
+          crmCustomers?: unknown[];
+          activeCrmCustomerId?: string | null;
           erpTopModule?: ErpModuleTab;
           erpInvSubTab?: ErpInvSubTab;
           erpCatalogFocus?: ErpStockKind | null;
@@ -2930,6 +3030,7 @@ export const useQuoteStore = create<State>()(
         const rawActive = (p as { activeTab?: unknown }).activeTab;
         const mergedActiveTab: QuoteTab =
           rawActive === "enterpriseResources" ||
+          rawActive === "crm" ||
           rawActive === "customPlan" ||
           rawActive === "erp" ||
           rawActive === "settings"
@@ -3039,6 +3140,16 @@ export const useQuoteStore = create<State>()(
               ? rawQuotePdfTplId
               : current.quotePdfTemplateId;
 
+        const mergedCrmCustomers: CrmCustomer[] = Array.isArray(p.crmCustomers)
+          ? p.crmCustomers.map((x) => normalizeCrmCustomer(x)).filter((x): x is CrmCustomer => x !== null)
+          : current.crmCustomers;
+        const rawActiveCrmCustomerId = (p as { activeCrmCustomerId?: unknown }).activeCrmCustomerId;
+        const mergedActiveCrmCustomerId: string | null =
+          typeof rawActiveCrmCustomerId === "string" &&
+          mergedCrmCustomers.some((c) => c.id === rawActiveCrmCustomerId)
+            ? rawActiveCrmCustomerId
+            : mergedCrmCustomers[0]?.id ?? null;
+
         const snapshotCtx = {
           materials,
           softwareFeatureIds: new Set(mergedSoftwareFeatures.map((f) => f.id)),
@@ -3070,6 +3181,8 @@ export const useQuoteStore = create<State>()(
         const mergedBase = {
           ...current,
           activeTab: mergedActiveTab,
+          crmCustomers: mergedCrmCustomers,
+          activeCrmCustomerId: mergedActiveCrmCustomerId,
           resourceLibrarySubTab: mergedResourceLibrarySubTab,
           enterpriseResourceMainTab: mergedEnterpriseResourceMainTab,
           quoteTemplates: mergedQuoteTemplates,
