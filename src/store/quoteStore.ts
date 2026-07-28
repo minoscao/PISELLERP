@@ -35,6 +35,9 @@ import type {
   ErpCatalogNavSel,
   ErpStockKind,
   ErpHardwareNavSortMode,
+  ErpOutboundOrder,
+  ErpOutboundOrderLine,
+  ErpSerialItem,
   ErpStockMovement,
   QuoteTab,
   CrmCustomer,
@@ -77,7 +80,12 @@ import { normalizePlanPreviewExtra } from "../utils/planPreviewExtra";
 import { normalizeSoftwareFeatureCategoryStored } from "../constants/softwareFeatureCategories";
 import { normalizeServiceCategoryStored } from "../constants/serviceCategoryPresets";
 import { migrateSoftwareMaterialCategoryPath } from "../utils/localeDataMigration";
-import { findBarcodeClash, normalizeErpInventoryLine, normalizeErpStockMovement } from "../utils/erpInventory";
+import {
+  findBarcodeClash,
+  normalizeErpInventoryLine,
+  normalizeErpSerialItem,
+  normalizeErpStockMovement,
+} from "../utils/erpInventory";
 import type { PisellImportResult } from "../utils/pisellHardwareImport";
 import { importPisellHardwareFromWorkbook, inferHardwareCategoryFromItem } from "../utils/pisellHardwareImport";
 import { normalizeStorageCategory, reorderCategoryDefsByHardwarePrimary } from "../utils/erpCatalogCategories";
@@ -533,6 +541,8 @@ type State = {
   /** 清空三 kind 的左侧筛选（媒体库「全部」等） */
   resetErpCatalogNavFilters: () => void;
   erpInventoryLines: ErpInventoryLine[];
+  erpSerialItems: ErpSerialItem[];
+  erpOutboundOrders: ErpOutboundOrder[];
   erpStockMovements: ErpStockMovement[];
   /**
    * Last `generatedAt` from `src/data/pisellHardwareSeed.json` applied in this browser.
@@ -551,8 +561,12 @@ type State = {
     kind: ErpStockKind,
     catalogRefId: string,
     qty: number,
-    opts?: { barcode?: string; note?: string; catalogOptionId?: string | null },
+    opts?: { barcode?: string; serialNumbers?: string[]; serialTracking?: boolean; note?: string; catalogOptionId?: string | null },
   ) => { ok: true } | { ok: false; error: string };
+  createErpOutboundOrder: (planId: string) => { ok: true; orderId: string } | { ok: false; error: string };
+  scanErpOutboundSerial: (orderId: string, serialNumber: string) => { ok: true } | { ok: false; error: string };
+  verifyErpOutboundLine: (orderId: string, lineId: string) => { ok: true } | { ok: false; error: string };
+  dispatchErpOutboundOrder: (orderId: string) => { ok: true } | { ok: false; error: string };
   /** 自 Pisell Hardware List.xlsx 导入硬件目录、产品图与库存行（合并同 WIFI 前缀为多规格） */
   importFromPisellWorkbook: (file: File) => Promise<PisellImportResult>;
   /** 从打包进应用的 `src/data/pisellHardwareSeed.json` 载入目录（与 xlsx 导入相同的替换规则） */
@@ -748,8 +762,8 @@ async function materializeBundledPisellCatalog(): Promise<MaterializedBundledPis
   const raw = await loadBundledPisellHardwarePayload();
   const buildId = bundledPisellHardwareBuildId(raw);
   if (!raw || !buildId || !isBundledPisellHardwareCatalogNonEmpty(raw)) return null;
-  if (!Array.isArray(raw.materials) || !Array.isArray(raw.associations)) return null;
-  const materials = raw.materials as MaterialPage[];
+  if (!Array.isArray(raw.associations)) return null;
+  const materials = Array.isArray(raw.materials) ? (raw.materials as MaterialPage[]) : [];
   const associations = (raw.associations as AssociationRow[]).map((a) => normalizeAssociationRow(a));
   const erpInventoryLines = Array.isArray(raw.erpInventoryLines)
     ? (raw.erpInventoryLines as Partial<ErpInventoryLine>[]).map((l) => normalizeErpInventoryLine(l))
@@ -821,6 +835,8 @@ export const useQuoteStore = create<State>()(
       erpCatalogSearchQuery: "",
       erpHardwareNavSortMode: "manual",
       erpInventoryLines: [],
+      erpSerialItems: [],
+      erpOutboundOrders: [],
       erpStockMovements: [],
       bundledHardwareCatalogBuildId: null,
       addCrmCustomer: (name) => {
@@ -2063,7 +2079,7 @@ export const useQuoteStore = create<State>()(
         flushQuotePersistDebouncedStorageNow();
       },
       setErpInvSubTab: (t) => {
-        set({ erpInvSubTab: t === "inbound" || t === "catalog" ? t : "inbound" });
+        set({ erpInvSubTab: t === "inbound" || t === "outbound" || t === "catalog" ? t : "inbound" });
         flushQuotePersistDebouncedStorageNow();
       },
       setErpCatalogFocus: (k) => set({ erpCatalogFocus: k }),
@@ -2142,8 +2158,24 @@ export const useQuoteStore = create<State>()(
           kind === "hardware" && typeof opts?.catalogOptionId === "string" && opts.catalogOptionId.trim()
             ? opts.catalogOptionId.trim()
             : null;
+        const serialTracking = kind === "hardware" ? opts?.serialTracking !== false : false;
+        const serialNumbers = serialTracking
+          ? [...new Set((opts?.serialNumbers ?? []).map((x) => String(x).trim()).filter(Boolean))]
+          : [];
+        if (serialTracking && serialNumbers.length !== q) {
+          return { ok: false, error: "serial_count" };
+        }
         let err: string | null = null;
         set((s) => {
+          if (kind === "hardware") {
+            const duplicate = serialNumbers.find((serial) =>
+              s.erpSerialItems.some((item) => item.serialNumber.toLowerCase() === serial.toLowerCase()),
+            );
+            if (duplicate) {
+              err = "serial_conflict";
+              return s;
+            }
+          }
           let lines = [...s.erpInventoryLines];
           const idx = lines.findIndex(
             (l) => l.kind === kind && l.catalogRefId === ref && (l.catalogOptionId ?? null) === catalogOptionId,
@@ -2168,6 +2200,7 @@ export const useQuoteStore = create<State>()(
                 catalogOptionId,
                 barcode: bc,
                 quantityOnHand: q,
+                serialTracking,
                 lastInboundAt: Date.now(),
               }),
             );
@@ -2182,6 +2215,7 @@ export const useQuoteStore = create<State>()(
               ...cur,
               barcode: nextBarcode,
               quantityOnHand: cur.quantityOnHand + q,
+              serialTracking: kind === "hardware" ? serialTracking : cur.serialTracking,
               lastInboundAt: Date.now(),
             });
           }
@@ -2193,13 +2227,199 @@ export const useQuoteStore = create<State>()(
             qty: q,
             note: opts?.note,
             barcodeSnapshot: bc || undefined,
+            serialNumbers: kind === "hardware" ? serialNumbers : undefined,
           });
           return {
             erpInventoryLines: lines,
+            erpSerialItems:
+              kind === "hardware"
+                ? [
+                    ...s.erpSerialItems,
+                    ...serialNumbers.map((serialNumber) =>
+                      normalizeErpSerialItem({
+                        serialNumber,
+                        catalogRefId: ref,
+                        catalogOptionId,
+                        status: "in_stock",
+                        inboundAt: Date.now(),
+                        note: opts?.note,
+                      }),
+                    ).filter((item): item is ErpSerialItem => item !== null),
+                  ]
+                : s.erpSerialItems,
             erpStockMovements: [mov, ...s.erpStockMovements].slice(0, 500),
           };
         });
         return err ? { ok: false, error: err } : { ok: true };
+      },
+
+      createErpOutboundOrder: (planId) => {
+        const plan = get().savedCustomPlans.find((item) => item.id === planId);
+        if (!plan) return { ok: false, error: "plan_missing" };
+        const grouped = new Map<string, Omit<ErpOutboundOrderLine, "id" | "serialNumbers" | "verifiedQty">>();
+        for (const placement of plan.data.placements) {
+          const quantity = Math.max(1, Math.floor(Number(placement.qty) || 1));
+          const optionId = placement.optionId ?? null;
+          const key = `${placement.associationId}:${optionId ?? ""}`;
+          const current = grouped.get(key);
+          grouped.set(key, {
+            catalogRefId: placement.associationId,
+            catalogOptionId: optionId,
+            quantity: (current?.quantity ?? 0) + quantity,
+          });
+        }
+        if (grouped.size === 0) return { ok: false, error: "plan_empty" };
+        const customer = get().crmCustomers.find((item) => item.solutionPlanIds.includes(planId));
+        const order: ErpOutboundOrder = {
+          id: crypto.randomUUID(),
+          planId,
+          customerId: customer?.id ?? null,
+          customerName: customer?.name || "Unassigned customer",
+          planName: plan.name,
+          status: "draft",
+          createdAt: Date.now(),
+          lines: [...grouped.values()].map((line) => ({
+            id: crypto.randomUUID(),
+            ...line,
+            serialNumbers: [],
+            verifiedQty: 0,
+          })),
+        };
+        set((s) => ({ erpOutboundOrders: [order, ...s.erpOutboundOrders] }));
+        return { ok: true, orderId: order.id };
+      },
+
+      scanErpOutboundSerial: (orderId, rawSerialNumber) => {
+        const serialNumber = rawSerialNumber.trim();
+        if (!serialNumber) return { ok: false, error: "serial_missing" };
+        let error: string | null = null;
+        set((s) => {
+          const serial = s.erpSerialItems.find(
+            (item) => item.serialNumber.toLowerCase() === serialNumber.toLowerCase() && item.status === "in_stock",
+          );
+          const order = s.erpOutboundOrders.find((item) => item.id === orderId);
+          if (!order || order.status !== "draft") {
+            error = "order_missing";
+            return s;
+          }
+          if (!serial) {
+            error = "serial_unavailable";
+            return s;
+          }
+          const line = order.lines.find(
+            (item) =>
+              item.catalogRefId === serial.catalogRefId &&
+              (item.catalogOptionId ?? null) === (serial.catalogOptionId ?? null) &&
+              item.serialNumbers.length + item.verifiedQty < item.quantity,
+          );
+          if (!line || order.lines.some((item) => item.serialNumbers.includes(serial.serialNumber))) {
+            error = "serial_not_required";
+            return s;
+          }
+          return {
+            erpOutboundOrders: s.erpOutboundOrders.map((item) =>
+              item.id !== orderId
+                ? item
+                : {
+                    ...item,
+                    lines: item.lines.map((entry) =>
+                      entry.id === line.id
+                        ? { ...entry, serialNumbers: [...entry.serialNumbers, serial.serialNumber] }
+                        : entry,
+                    ),
+                  },
+            ),
+          };
+        });
+        return error ? { ok: false, error } : { ok: true };
+      },
+
+      verifyErpOutboundLine: (orderId, lineId) => {
+        let error: string | null = null;
+        set((s) => ({
+          erpOutboundOrders: s.erpOutboundOrders.map((order) => {
+            if (order.id !== orderId || order.status !== "draft") return order;
+            const hasLine = order.lines.some((line) => line.id === lineId);
+            if (!hasLine) {
+              error = "line_missing";
+              return order;
+            }
+            return {
+              ...order,
+              lines: order.lines.map((line) =>
+                line.id === lineId
+                  ? { ...line, verifiedQty: Math.max(0, line.quantity - line.serialNumbers.length) }
+                  : line,
+              ),
+            };
+          }),
+        }));
+        return error ? { ok: false, error } : { ok: true };
+      },
+
+      dispatchErpOutboundOrder: (orderId) => {
+        let error: string | null = null;
+        set((s) => {
+          const order = s.erpOutboundOrders.find((item) => item.id === orderId);
+          if (!order || order.status !== "draft") {
+            error = "order_missing";
+            return s;
+          }
+          if (order.lines.some((line) => line.serialNumbers.length + line.verifiedQty < line.quantity)) {
+            error = "not_verified";
+            return s;
+          }
+          const now = Date.now();
+          const insufficient = order.lines.some((line) => {
+            const stock = s.erpInventoryLines.find(
+              (item) =>
+                item.kind === "hardware" &&
+                item.catalogRefId === line.catalogRefId &&
+                (item.catalogOptionId ?? null) === (line.catalogOptionId ?? null),
+            );
+            return (stock?.quantityOnHand ?? 0) < line.quantity;
+          });
+          if (insufficient) {
+            error = "stock_short";
+            return s;
+          }
+          const serialSet = new Set(order.lines.flatMap((line) => line.serialNumbers));
+          const movements = order.lines.map((line) =>
+            normalizeErpStockMovement({
+              direction: "out",
+              kind: "hardware",
+              catalogRefId: line.catalogRefId,
+              catalogOptionId: line.catalogOptionId,
+              qty: line.quantity,
+              note: `${order.customerName} · ${order.planName}`,
+              serialNumbers: line.serialNumbers,
+              outboundOrderId: order.id,
+            }),
+          );
+          return {
+            erpInventoryLines: s.erpInventoryLines.map((item) => {
+              const requested = order.lines.find(
+                (line) =>
+                  item.kind === "hardware" &&
+                  line.catalogRefId === item.catalogRefId &&
+                  (line.catalogOptionId ?? null) === (item.catalogOptionId ?? null),
+              );
+              return requested
+                ? normalizeErpInventoryLine({ ...item, quantityOnHand: item.quantityOnHand - requested.quantity })
+                : item;
+            }),
+            erpSerialItems: s.erpSerialItems.map((item) =>
+              serialSet.has(item.serialNumber)
+                ? { ...item, status: "dispatched" as const, outboundAt: now, outboundOrderId: order.id }
+                : item,
+            ),
+            erpOutboundOrders: s.erpOutboundOrders.map((item) =>
+              item.id === order.id ? { ...item, status: "dispatched" as const, dispatchedAt: now } : item,
+            ),
+            erpStockMovements: [...movements, ...s.erpStockMovements].slice(0, 500),
+          };
+        });
+        return error ? { ok: false, error } : { ok: true };
       },
 
       importFromPisellWorkbook: async (file) => {
@@ -2249,7 +2469,7 @@ export const useQuoteStore = create<State>()(
         void materializeBundledPisellCatalog().then((m) => {
         if (!m) return;
         const s = get();
-        if ((s.bundledHardwareCatalogBuildId ?? null) === m.buildId) return;
+        if ((s.bundledHardwareCatalogBuildId ?? null) === m.buildId && s.associations.length > 0) return;
         // 已有用户硬件目录时只对齐版本号，避免启动时用内置种子覆盖导入数据
         if (s.associations.length > 0) {
           set({ bundledHardwareCatalogBuildId: m.buildId });
@@ -2824,6 +3044,8 @@ export const useQuoteStore = create<State>()(
         erpCatalogSearchQuery: s.erpCatalogSearchQuery,
         erpHardwareNavSortMode: s.erpHardwareNavSortMode,
         erpInventoryLines: s.erpInventoryLines,
+        erpSerialItems: s.erpSerialItems,
+        erpOutboundOrders: s.erpOutboundOrders,
         erpStockMovements: s.erpStockMovements,
         bundledHardwareCatalogBuildId: s.bundledHardwareCatalogBuildId,
         activeTab: s.activeTab,
@@ -2877,6 +3099,8 @@ export const useQuoteStore = create<State>()(
           erpInvSubTab?: ErpInvSubTab;
           erpCatalogFocus?: ErpStockKind | null;
           erpInventoryLines?: Partial<ErpInventoryLine>[];
+          erpSerialItems?: Partial<ErpSerialItem>[];
+          erpOutboundOrders?: ErpOutboundOrder[];
           erpStockMovements?: Partial<ErpStockMovement>[];
           bundledHardwareCatalogBuildId?: number | null;
         } | null;
@@ -3129,7 +3353,7 @@ export const useQuoteStore = create<State>()(
             : current.erpTopModule;
         const rawInvSub = (p as { erpInvSubTab?: unknown }).erpInvSubTab;
         const mergedErpInvSubTab: ErpInvSubTab =
-          rawInvSub === "inbound" || rawInvSub === "catalog"
+          rawInvSub === "inbound" || rawInvSub === "outbound" || rawInvSub === "catalog"
             ? rawInvSub
             : rawInvSub === "ledger"
               ? "inbound"
@@ -3208,6 +3432,21 @@ export const useQuoteStore = create<State>()(
         const mergedErpMoves: ErpStockMovement[] = Array.isArray(p.erpStockMovements)
           ? p.erpStockMovements.map((x) => normalizeErpStockMovement(x as Partial<ErpStockMovement>))
           : current.erpStockMovements;
+        const mergedErpSerials: ErpSerialItem[] = Array.isArray(p.erpSerialItems)
+          ? p.erpSerialItems
+              .map((x) => normalizeErpSerialItem(x as Partial<ErpSerialItem>))
+              .filter((x): x is ErpSerialItem => x !== null)
+          : current.erpSerialItems;
+        const mergedOutboundOrders: ErpOutboundOrder[] = Array.isArray(p.erpOutboundOrders)
+          ? p.erpOutboundOrders.filter(
+              (order): order is ErpOutboundOrder =>
+                !!order &&
+                typeof order.id === "string" &&
+                typeof order.planId === "string" &&
+                Array.isArray(order.lines) &&
+                (order.status === "draft" || order.status === "dispatched"),
+            )
+          : current.erpOutboundOrders;
 
         const rawPlanTemplates = (p as { planTemplates?: unknown }).planTemplates;
         const mergedPlanTemplates: SavedPlanTemplate[] = Array.isArray(rawPlanTemplates)
@@ -3309,6 +3548,8 @@ export const useQuoteStore = create<State>()(
           materialsBrandNavSel: mergedMaterialsBrandNavSel,
           erpHardwareNavSortMode: mergedErpHardwareNavSortMode,
           erpInventoryLines: mergedErpLines,
+          erpSerialItems: mergedErpSerials,
+          erpOutboundOrders: mergedOutboundOrders,
           erpStockMovements: mergedErpMoves,
           categoryDefs,
           materials,

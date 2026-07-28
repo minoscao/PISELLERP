@@ -1,9 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useT } from "../../i18n/useT";
 import { useQuoteStore } from "../../store/quoteStore";
 import type { AssociationRow, ErpStockKind, ServiceRow, SoftwareFeatureRow } from "../../types";
 import { optionById } from "../../utils/hardwareOptionsAddons";
-import { resolveErpBarcodeScan } from "../../utils/erpInventory";
 
 type Sel = "" | `hw:${string}` | `hw:${string}|${string}` | `sw:${string}` | `sv:${string}`;
 
@@ -33,9 +32,9 @@ export function ErpInboundPanel() {
 
   const [sel, setSel] = useState<Sel>("");
   const [qty, setQty] = useState(1);
-  const [barcodeIn, setBarcodeIn] = useState("");
+  const [serialText, setSerialText] = useState("");
+  const [serialTracking, setSerialTracking] = useState(true);
   const [note, setNote] = useState("");
-  const [scanField, setScanField] = useState("");
   const [msg, setMsg] = useState<{ text: string; tone: "ok" | "err" } | null>(null);
 
   const matById = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
@@ -89,48 +88,27 @@ export function ErpInboundPanel() {
     };
   }, [parsed, associations, softwareFeatures, serviceItems, matById, tr]);
 
-  const applyScan = useCallback(
-    (raw: string) => {
-      const code = raw.trim();
-      setScanField(code);
-      if (!code) return;
-      const hit = resolveErpBarcodeScan(lines, associations, code);
-      if (!hit) {
-        setMsg({ text: tr("erp.scanNoMatch"), tone: "err" });
-        return;
-      }
-      setMsg(null);
-      if (hit.kind === "hardware") {
-        const suf = hit.catalogOptionId ? `|${hit.catalogOptionId}` : "";
-        setSel(`hw:${hit.catalogRefId}${suf}` as Sel);
-      } else if (hit.kind === "software") {
-        setSel(`sw:${hit.catalogRefId}` as Sel);
-      } else {
-        setSel(`sv:${hit.catalogRefId}` as Sel);
-      }
-    },
-    [lines, associations, tr],
-  );
-
   const onSubmitInbound = () => {
     setMsg(null);
     if (!parsed) {
       setMsg({ text: tr("erp.pickProduct"), tone: "err" });
       return;
     }
+    const serialNumbers = [...new Set(serialText.split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
     const r = recordErpStockIn(parsed.kind, parsed.id, qty, {
-      barcode: barcodeIn.trim() || undefined,
+      serialNumbers: parsed.kind === "hardware" ? serialNumbers : undefined,
+      serialTracking: parsed.kind === "hardware" ? serialTracking : undefined,
       note: note.trim() || undefined,
       catalogOptionId: parsed.kind === "hardware" ? parsed.catalogOptionId : undefined,
     });
     if (!r.ok) {
-      if (r.error === "barcode_conflict") setMsg({ text: tr("erp.errBarcodeConflict"), tone: "err" });
-      else if (r.error === "barcode_mismatch") setMsg({ text: tr("erp.errBarcodeMismatch"), tone: "err" });
+      if (r.error === "serial_count") setMsg({ text: "Enter one unique SN for every hardware unit.", tone: "err" });
+      else if (r.error === "serial_conflict") setMsg({ text: "This SN already exists in inventory.", tone: "err" });
       else setMsg({ text: tr("erp.errInbound"), tone: "err" });
       return;
     }
     setMsg({ text: tr("erp.inboundOk"), tone: "ok" });
-    setBarcodeIn("");
+    setSerialText("");
     setNote("");
     setQty(1);
   };
@@ -208,23 +186,22 @@ export function ErpInboundPanel() {
         )}
       </div>
 
-      <label className="flex flex-col gap-1 text-xs text-app-muted">
-        <span className="font-medium text-app-text">{tr("erp.scanBarcode")}</span>
-        <input
-          type="text"
-          value={scanField}
-          onChange={(e) => setScanField(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              applyScan(scanField);
-            }
-          }}
-          placeholder={tr("erp.scanPlaceholder")}
-          className="rounded border border-app-line-mid bg-app-surface-2 px-2 py-2 text-sm text-app-text"
-        />
-        <span className="text-app-subtle">{tr("erp.scanHelp")}</span>
-      </label>
+      {parsed?.kind === "hardware" ? (
+        <label className="flex flex-col gap-1 text-xs text-app-muted">
+          <span className="font-medium text-app-text">Hardware SN</span>
+          <textarea
+            value={serialText}
+            onChange={(e) => setSerialText(e.target.value)}
+            placeholder="Scan one SN per line"
+            className="min-h-24 rounded border border-app-line-mid bg-app-surface-2 px-2 py-2 text-sm text-app-text"
+          />
+          <span className="text-app-subtle">Every physical hardware unit needs one unique SN. Product barcode is not used as its SN.</span>
+          <label className="mt-1 flex items-center gap-2 text-app-text">
+            <input type="checkbox" checked={serialTracking} onChange={(event) => setSerialTracking(event.target.checked)} />
+            Track this product by SN
+          </label>
+        </label>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-1 text-xs text-app-muted">
@@ -237,15 +214,12 @@ export function ErpInboundPanel() {
             className="rounded border border-app-line-mid bg-app-surface-2 px-2 py-1.5 text-sm text-app-text"
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs text-app-muted">
-          {tr("erp.barcodeOptional")}
-          <input
-            type="text"
-            value={barcodeIn}
-            onChange={(e) => setBarcodeIn(e.target.value)}
-            className="rounded border border-app-line-mid bg-app-surface-2 px-2 py-1.5 text-sm text-app-text"
-          />
-        </label>
+        <div className="flex flex-col gap-1 text-xs text-app-muted">
+          <span>Tracking</span>
+          <span className="rounded border border-app-line-mid bg-app-surface-2 px-2 py-1.5 text-sm text-app-text">
+            {parsed?.kind === "hardware" ? (serialTracking ? "SN required" : "No SN · quantity only") : "Quantity only"}
+          </span>
+        </div>
       </div>
       <label className="flex flex-col gap-1 text-xs text-app-muted">
         {tr("erp.noteOptional")}

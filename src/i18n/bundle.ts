@@ -196,6 +196,7 @@ const ROWS: [string, string, string][] = [
   ["erp.modStaff", "Staff", "人事"],
   ["erp.comingSoon", "Coming soon.", "敬请期待。"],
   ["erp.subInbound", "Inbound", "入库"],
+  ["erp.subOutbound", "Outbound", "出库"],
   ["erp.subCatalog", "Product catalog", "产品库"],
   ["erp.catalogSearchPh", "Search categories and products…", "搜索分类与产品…"],
   ["erp.catalogFolders", "Categories", "分类"],

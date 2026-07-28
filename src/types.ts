@@ -603,7 +603,7 @@ export type QuoteTab =
 export type ErpModuleTab = "customer" | "inventory" | "staff";
 
 /** 库存子模块 Tab */
-export type ErpInvSubTab = "inbound" | "catalog";
+export type ErpInvSubTab = "inbound" | "outbound" | "catalog";
 
 /** 与硬件行 / 软件功能 / 服务目录对应的库存维度 */
 export type ErpStockKind = "hardware" | "software" | "service";
@@ -641,7 +641,44 @@ export type ErpInventoryLine = {
   supplierSku: string;
   /** 成本单价（可选，便于毛利；与报价单价独立） */
   costPrice: number | null;
+  /** Whether physical units of this hardware SKU must be tracked by unique SN. */
+  serialTracking: boolean;
   lastInboundAt?: number;
+};
+
+/** A physical hardware unit. SN is required for hardware receiving and dispatch. */
+export type ErpSerialItem = {
+  id: string;
+  serialNumber: string;
+  catalogRefId: string;
+  catalogOptionId: string | null;
+  status: "in_stock" | "dispatched";
+  inboundAt: number;
+  outboundAt?: number;
+  outboundOrderId?: string;
+  note?: string;
+};
+
+export type ErpOutboundOrderLine = {
+  id: string;
+  catalogRefId: string;
+  catalogOptionId: string | null;
+  quantity: number;
+  serialNumbers: string[];
+  verifiedQty: number;
+};
+
+/** Delivery note created from a saved customer quotation / solution. */
+export type ErpOutboundOrder = {
+  id: string;
+  planId: string;
+  customerId: string | null;
+  customerName: string;
+  planName: string;
+  status: "draft" | "dispatched";
+  createdAt: number;
+  dispatchedAt?: number;
+  lines: ErpOutboundOrderLine[];
 };
 
 export type ErpStockMovement = {
@@ -655,4 +692,6 @@ export type ErpStockMovement = {
   qty: number;
   note?: string;
   barcodeSnapshot?: string;
+  serialNumbers?: string[];
+  outboundOrderId?: string;
 };

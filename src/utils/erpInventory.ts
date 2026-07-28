@@ -1,4 +1,4 @@
-import type { AssociationRow, ErpInventoryLine, ErpStockKind, ErpStockMovement } from "../types";
+import type { AssociationRow, ErpInventoryLine, ErpSerialItem, ErpStockKind, ErpStockMovement } from "../types";
 
 export function normalizeErpStockKind(raw: unknown): ErpStockKind {
   return raw === "software" || raw === "service" ? raw : "hardware";
@@ -33,6 +33,7 @@ export function normalizeErpInventoryLine(raw: Partial<ErpInventoryLine> & { id?
       raw.costPrice !== undefined && raw.costPrice !== null && Number.isFinite(Number(raw.costPrice))
         ? Math.max(0, Number(raw.costPrice))
         : null,
+    serialTracking: kind === "hardware" ? raw.serialTracking !== false : false,
     lastInboundAt:
       typeof raw.lastInboundAt === "number" && raw.lastInboundAt > 0 ? raw.lastInboundAt : undefined,
   };
@@ -61,6 +62,28 @@ export function normalizeErpStockMovement(raw: Partial<ErpStockMovement> & { id?
     qty,
     note: typeof raw.note === "string" ? raw.note.trim() || undefined : undefined,
     barcodeSnapshot: typeof raw.barcodeSnapshot === "string" ? raw.barcodeSnapshot.trim() || undefined : undefined,
+    serialNumbers: Array.isArray(raw.serialNumbers)
+      ? [...new Set(raw.serialNumbers.map((x) => String(x).trim()).filter(Boolean))]
+      : undefined,
+    outboundOrderId: typeof raw.outboundOrderId === "string" ? raw.outboundOrderId.trim() || undefined : undefined,
+  };
+}
+
+export function normalizeErpSerialItem(raw: Partial<ErpSerialItem> & { id?: string }): ErpSerialItem | null {
+  const serialNumber = String(raw.serialNumber ?? "").trim();
+  const catalogRefId = String(raw.catalogRefId ?? "").trim();
+  if (!serialNumber || !catalogRefId) return null;
+  const option = raw.catalogOptionId;
+  return {
+    id: typeof raw.id === "string" && raw.id ? raw.id : crypto.randomUUID(),
+    serialNumber,
+    catalogRefId,
+    catalogOptionId: typeof option === "string" && option.trim() ? option.trim() : null,
+    status: raw.status === "dispatched" ? "dispatched" : "in_stock",
+    inboundAt: typeof raw.inboundAt === "number" && raw.inboundAt > 0 ? raw.inboundAt : Date.now(),
+    outboundAt: typeof raw.outboundAt === "number" && raw.outboundAt > 0 ? raw.outboundAt : undefined,
+    outboundOrderId: typeof raw.outboundOrderId === "string" ? raw.outboundOrderId.trim() || undefined : undefined,
+    note: typeof raw.note === "string" ? raw.note.trim() || undefined : undefined,
   };
 }
 

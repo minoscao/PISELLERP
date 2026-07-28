@@ -2,6 +2,7 @@ import { useT } from "../i18n/useT";
 import { useQuoteStore } from "../store/quoteStore";
 import type { ErpInvSubTab, ErpModuleTab } from "../types";
 import { ErpInboundPanel } from "./erp/ErpInboundPanel";
+import { ErpOutboundPanel } from "./erp/ErpOutboundPanel";
 import { ErpProductCatalogPanel } from "./erp/ErpProductCatalogPanel";
 import { UiPageShell } from "./UiPageShell";
 
@@ -13,6 +14,7 @@ const ERP_MAIN: { id: ErpModuleTab; labelKey: string }[] = [
 
 const INV_TABS: { id: ErpInvSubTab; labelKey: string }[] = [
   { id: "inbound", labelKey: "erp.subInbound" },
+  { id: "outbound", labelKey: "erp.subOutbound" },
   { id: "catalog", labelKey: "erp.subCatalog" },
 ];
 
@@ -66,6 +68,8 @@ export function ErpPanel() {
         </div>
       ) : invSub === "inbound" ? (
         <ErpInboundPanel />
+      ) : invSub === "outbound" ? (
+        <ErpOutboundPanel />
       ) : (
         <ErpProductCatalogPanel />
       )}

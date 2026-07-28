@@ -1,6 +1,6 @@
 import type { AssociationRow, ErpInventoryLine, MaterialPage } from "../types";
 
-/** Shape of `src/data/pisellHardwareSeed.json` (also written to `public/` by the seed script). */
+/** Shape of the full R2 catalog seed or the lightweight public picker index. */
 export type BundledPisellHardwarePayload = {
   generatedAt?: number;
   materials: MaterialPage[];
@@ -21,11 +21,23 @@ export async function loadBundledPisellHardwarePayload(): Promise<BundledPisellH
     const response = await fetch("/api/catalog-seed", {
       cache: "force-cache",
     });
+    if (response.ok && response.headers.get("content-type")?.includes("application/json")) {
+      const payload = (await response.json()) as BundledPisellHardwarePayload;
+      if (Array.isArray(payload.materials) && Array.isArray(payload.associations)) {
+        cachedPayload = payload;
+        return payload;
+      }
+    }
+  } catch {
+    // The Worker can be configured as a static SPA before the R2 API is bound.
+  }
+  try {
+    const response = await fetch("./pisellCatalogIndex.json", { cache: "force-cache" });
     if (!response.ok) return null;
     const payload = (await response.json()) as BundledPisellHardwarePayload;
-    if (!Array.isArray(payload.materials) || !Array.isArray(payload.associations)) return null;
-    cachedPayload = payload;
-    return payload;
+    if (!Array.isArray(payload.associations)) return null;
+    cachedPayload = { ...payload, materials: [] };
+    return cachedPayload;
   } catch {
     return null;
   }
