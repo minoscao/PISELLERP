@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { quotePersistFileApiPlugin } from "./vite.quotePersistPlugin";
 
+import { cloudflare } from "@cloudflare/vite-plugin";
+
 export default defineConfig({
   base: "./",
   define: {
@@ -12,7 +14,7 @@ export default defineConfig({
     port: 5174,
     strictPort: false,
   },
-  plugins: [react(), quotePersistFileApiPlugin()],
+  plugins: [react(), quotePersistFileApiPlugin(), cloudflare()],
   optimizeDeps: {
     exclude: ["pdfjs-dist"],
   },
