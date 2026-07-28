@@ -18,8 +18,7 @@ let cachedPayload: BundledPisellHardwarePayload | null = null;
 export async function loadBundledPisellHardwarePayload(): Promise<BundledPisellHardwarePayload | null> {
   if (cachedPayload) return cachedPayload;
   try {
-    const base = import.meta.env.BASE_URL || "/";
-    const response = await fetch(`${base.replace(/\/$/, "")}/pisellHardwareSeed.json`, {
+    const response = await fetch("/api/catalog-seed", {
       cache: "force-cache",
     });
     if (!response.ok) return null;

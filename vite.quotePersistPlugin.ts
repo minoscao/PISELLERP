@@ -9,6 +9,7 @@ export const QUOTE_PERSIST_FILE = "marketing-quote-v1.json";
 const persistDir = path.resolve(process.cwd(), "data");
 const persistPath = path.join(persistDir, QUOTE_PERSIST_FILE);
 const backupDir = path.join(persistDir, "backups");
+const catalogSeedPath = path.resolve(process.cwd(), "src", "data", "pisellHardwareSeed.json");
 const MAX_BACKUPS = 5;
 const BACKUP_PREFIX = "marketing-quote-";
 const BACKUP_JSON_SUFFIX = ".json";
@@ -85,6 +86,23 @@ function persistApiMiddleware(): Connect.NextHandleFunction {
   return (req, res, next) => {
     const raw = req.url ?? "";
     const pathname = raw.split("?")[0] ?? "";
+    if (pathname === "/api/catalog-seed") {
+      if (req.method !== "GET") {
+        res.statusCode = 405;
+        res.end();
+        return;
+      }
+      if (!fs.existsSync(catalogSeedPath)) {
+        res.statusCode = 404;
+        res.end();
+        return;
+      }
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      fs.createReadStream(catalogSeedPath).pipe(res);
+      return;
+    }
     if (pathname === "/api/quote-persist/backups") {
       if (req.method !== "GET") {
         res.statusCode = 405;
