@@ -3,6 +3,11 @@ import { quotePersistStorage, readPersistJsonFromIdbOnly } from "./quotePersistS
 
 const PERSIST_API = "/api/quote-persist";
 
+function isJsonResponse(response: Response) {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  return contentType.includes("application/json") || contentType.includes("application/vnd.api+json");
+}
+
 /**
  * 优先读写项目目录 `data/marketing-quote-v1.json`（经 Vite dev / `vite preview` 的 `/api/quote-persist`）。
  * 读取时合并：项目文件、IndexedDB、localStorage 残留，取定制方案内容更完整的一份。
@@ -14,7 +19,10 @@ export const quoteFolderPersistStorage: StateStorage = {
     let fromFile: string | null = null;
     try {
       const r = await fetch(PERSIST_API, { method: "GET", cache: "no-store" });
-      if (r.ok) {
+      // A static-host SPA fallback can answer this URL with index.html (200).
+      // Never pass that HTML to Zustand's JSON persist parser, otherwise startup
+      // remains stuck in the loading state.
+      if (r.ok && isJsonResponse(r)) {
         const t = await r.text();
         if (t && t.trim().length > 0) fromFile = t;
       }
@@ -41,11 +49,12 @@ export const quoteFolderPersistStorage: StateStorage = {
   setItem: async (name, value) => {
     const str = typeof value === "string" ? value : JSON.stringify(value);
     try {
-      await fetch(PERSIST_API, {
+      const response = await fetch(PERSIST_API, {
         method: "PUT",
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: str,
       });
+      if (!response.ok) throw new Error("Project storage endpoint is unavailable");
     } catch {
       /* 无服务时仅写 IDB */
     }
