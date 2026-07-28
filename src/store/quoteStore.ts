@@ -94,8 +94,8 @@ import {
 } from "../utils/hardwareCatalogReplace";
 import {
   bundledPisellHardwareBuildId,
-  bundledPisellHardwarePayload,
   isBundledPisellHardwareCatalogNonEmpty,
+  loadBundledPisellHardwarePayload,
 } from "../data/bundledPisellCatalog";
 import {
   captureCustomPlanSnapshot,
@@ -744,10 +744,10 @@ type MaterializedBundledPisell = {
   erpInventoryLines: ErpInventoryLine[];
 };
 
-function materializeBundledPisellCatalog(): MaterializedBundledPisell | null {
-  const buildId = bundledPisellHardwareBuildId();
-  if (!buildId || !isBundledPisellHardwareCatalogNonEmpty()) return null;
-  const raw = bundledPisellHardwarePayload;
+async function materializeBundledPisellCatalog(): Promise<MaterializedBundledPisell | null> {
+  const raw = await loadBundledPisellHardwarePayload();
+  const buildId = bundledPisellHardwareBuildId(raw);
+  if (!raw || !buildId || !isBundledPisellHardwareCatalogNonEmpty(raw)) return null;
   if (!Array.isArray(raw.materials) || !Array.isArray(raw.associations)) return null;
   const materials = raw.materials as MaterialPage[];
   const associations = (raw.associations as AssociationRow[]).map((a) => normalizeAssociationRow(a));
@@ -2208,7 +2208,8 @@ export const useQuoteStore = create<State>()(
         const bundle = await importPisellHardwareFromWorkbook(buf, {
           categoryDefs,
         });
-        const bid = bundledPisellHardwareBuildId();
+        const bundledPayload = await loadBundledPisellHardwarePayload();
+        const bid = bundledPisellHardwareBuildId(bundledPayload);
         set((s) => ({
           ...s,
           ...patchStateWithHardwareCatalogBundle(s, bundle),
@@ -2220,11 +2221,11 @@ export const useQuoteStore = create<State>()(
 
       applyBundledPisellHardwareSeed: async () => {
         try {
-          const m = materializeBundledPisellCatalog();
+          const m = await materializeBundledPisellCatalog();
           if (!m) {
             return {
               ok: false,
-              error: "Bundled catalog is empty. Run: npm run generate:pisell-seed (writes src/data/pisellHardwareSeed.json)",
+              error: "Hardware catalog is unavailable. Regenerate the Pisell seed and redeploy.",
             };
           }
           const bundle = {
@@ -2245,7 +2246,7 @@ export const useQuoteStore = create<State>()(
       },
 
       ensureBundledHardwareCatalogSynced: () => {
-        const m = materializeBundledPisellCatalog();
+        void materializeBundledPisellCatalog().then((m) => {
         if (!m) return;
         const s = get();
         if ((s.bundledHardwareCatalogBuildId ?? null) === m.buildId) return;
@@ -2264,6 +2265,7 @@ export const useQuoteStore = create<State>()(
           ...patchStateWithHardwareCatalogBundle(state, bundle),
           bundledHardwareCatalogBuildId: m.buildId,
         }));
+        });
       },
 
       recategorizeUncategorizedHardware: () => {

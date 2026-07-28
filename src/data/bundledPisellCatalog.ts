@@ -8,17 +8,36 @@ export type BundledPisellHardwarePayload = {
   erpInventoryLines?: Partial<ErpInventoryLine>[];
 };
 
-import bundledJson from "./pisellHardwareSeed.json";
+let cachedPayload: BundledPisellHardwarePayload | null = null;
 
-export const bundledPisellHardwarePayload = bundledJson as BundledPisellHardwarePayload;
+/**
+ * The catalog contains product images and is intentionally served as a static file,
+ * rather than imported into the JavaScript bundle. This keeps production builds
+ * within Cloudflare's build-memory limit.
+ */
+export async function loadBundledPisellHardwarePayload(): Promise<BundledPisellHardwarePayload | null> {
+  if (cachedPayload) return cachedPayload;
+  try {
+    const base = import.meta.env.BASE_URL || "/";
+    const response = await fetch(`${base.replace(/\/$/, "")}/pisellHardwareSeed.json`, {
+      cache: "force-cache",
+    });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as BundledPisellHardwarePayload;
+    if (!Array.isArray(payload.materials) || !Array.isArray(payload.associations)) return null;
+    cachedPayload = payload;
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
-/** Monotonic id from seed file; bump by regenerating the JSON (`generatedAt` timestamp). */
-export function bundledPisellHardwareBuildId(): number {
-  const g = bundledPisellHardwarePayload.generatedAt;
+/** Monotonic id from the static seed file; bump by regenerating the JSON. */
+export function bundledPisellHardwareBuildId(payload: BundledPisellHardwarePayload | null): number {
+  const g = payload?.generatedAt;
   return typeof g === "number" && Number.isFinite(g) && g > 0 ? g : 0;
 }
 
-export function isBundledPisellHardwareCatalogNonEmpty(): boolean {
-  const p = bundledPisellHardwarePayload;
-  return Array.isArray(p.associations) && p.associations.length > 0;
+export function isBundledPisellHardwareCatalogNonEmpty(payload: BundledPisellHardwarePayload | null): boolean {
+  return Array.isArray(payload?.associations) && payload.associations.length > 0;
 }
