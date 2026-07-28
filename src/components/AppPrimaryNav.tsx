@@ -1,5 +1,6 @@
 import type { ComponentType, DragEvent } from "react";
 import { useCallback, useEffect, useState } from "react";
+import { AUTH_CONFIG, getCurrentPisellUser } from "../config/auth";
 import { useT } from "../i18n/useT";
 import { useQuoteStore } from "../store/quoteStore";
 import type { QuoteTab } from "../types";
@@ -221,6 +222,7 @@ export function AppPrimaryNav() {
   const t = useT();
   const activeTab = useQuoteStore((s) => s.activeTab);
   const setActiveTab = useQuoteStore((s) => s.setActiveTab);
+  const currentUser = getCurrentPisellUser();
 
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -388,6 +390,32 @@ export function AppPrimaryNav() {
           <p className="px-1 text-[10px] font-medium uppercase tracking-wide text-app-muted/75">{t("nav.bottomGroup")}</p>
         ) : null}
         {renderSettingsItem()}
+        <div
+          className={`rounded-lg border border-app-line-subtle/40 bg-[rgb(var(--app-surface-2-rgb)/0.18)] text-app-muted ${
+            collapsed ? "px-1 py-2 text-center" : "px-2.5 py-2"
+          }`}
+        >
+          {!collapsed ? (
+            <div className="mb-2 truncate text-xs">
+              Account <span className="font-semibold text-app-text">{currentUser.name}</span>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                window.sessionStorage.removeItem(AUTH_CONFIG.sessionKey);
+                window.sessionStorage.removeItem(AUTH_CONFIG.legacySessionKey);
+              } finally {
+                window.location.reload();
+              }
+            }}
+            className="w-full rounded-md border border-app-line-subtle px-2 py-1.5 text-xs font-medium transition hover:border-app-primary/70 hover:text-app-text active:scale-[0.98]"
+            title={collapsed ? `Account ${currentUser.name}` : undefined}
+          >
+            {collapsed ? currentUser.name.slice(0, 1).toUpperCase() : "Sign out"}
+          </button>
+        </div>
         <button
           type="button"
           onClick={toggleCollapsed}

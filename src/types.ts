@@ -378,6 +378,9 @@ export type SavedCustomPlan = {
   name: string;
   createdAt: number;
   updatedAt: number;
+  ownerUserId: string;
+  visibility: "company" | "private";
+  sharedUserIds: string[];
   data: CustomPlanSnapshotData;
 };
 
@@ -387,6 +390,9 @@ export type CrmCustomer = {
   industry: string;
   contact: string;
   logoDataUrl?: string | null;
+  ownerUserId: string;
+  visibility: "company" | "private";
+  sharedUserIds: string[];
   companyLegalName?: string;
   customerType?: "lead" | "prospect" | "customer" | "partner" | "inactive";
   stage?: "new" | "contacted" | "qualified" | "proposal" | "negotiation" | "won" | "lost";

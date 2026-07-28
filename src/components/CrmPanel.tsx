@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { PISELL_USERS, canReadPlanAccess, getCurrentPisellUser } from "../config/auth";
 import { compressImageFileToJpegDataUrl } from "../utils/compressImageFile";
 import { PhotoUploadModal } from "./PhotoUploadModal";
 import { useQuoteStore } from "../store/quoteStore";
@@ -144,8 +145,10 @@ export function CrmPanel() {
   const deleteCustomer = useQuoteStore((s) => s.deleteCrmCustomer);
   const setActiveCustomerId = useQuoteStore((s) => s.setActiveCrmCustomerId);
   const createCustomPlan = useQuoteStore((s) => s.createCustomPlan);
+  const updateCustomPlanAccess = useQuoteStore((s) => s.updateCustomPlanAccess);
   const loadCustomPlan = useQuoteStore((s) => s.loadCustomPlan);
   const setActiveTab = useQuoteStore((s) => s.setActiveTab);
+  const currentUser = getCurrentPisellUser();
 
   const [detailTab, setDetailTab] = useState<"solution" | "info">("solution");
   const [search, setSearch] = useState("");
@@ -153,7 +156,12 @@ export function CrmPanel() {
   const [logoModalOpen, setLogoModalOpen] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
 
-  const activeCustomer = customers.find((c) => c.id === activeCustomerId) ?? customers[0] ?? null;
+  const visibleCustomers = useMemo(
+    () => customers.filter((c) => canReadPlanAccess(c, currentUser.id)),
+    [currentUser.id, customers],
+  );
+
+  const activeCustomer = visibleCustomers.find((c) => c.id === activeCustomerId) ?? visibleCustomers[0] ?? null;
 
   const industries = useMemo(() => {
     const fromCustomers = customers.map((c) => c.industry).filter(Boolean);
@@ -162,8 +170,8 @@ export function CrmPanel() {
 
   const filteredCustomers = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter((c) =>
+    if (!q) return visibleCustomers;
+    return visibleCustomers.filter((c) =>
       [
         c.name,
         c.companyLegalName,
@@ -181,10 +189,10 @@ export function CrmPanel() {
         .toLowerCase()
         .includes(q),
     );
-  }, [customers, search]);
+  }, [visibleCustomers, search]);
 
   const linkedPlanIds = new Set(activeCustomer?.solutionPlanIds ?? []);
-  const linkedPlans = savedCustomPlans.filter((p) => linkedPlanIds.has(p.id));
+  const linkedPlans = savedCustomPlans.filter((p) => linkedPlanIds.has(p.id) && canReadPlanAccess(p, currentUser.id));
 
   const patch = (value: CustomerPatch) => {
     if (!activeCustomer) return;
@@ -205,6 +213,10 @@ export function CrmPanel() {
   const createPlanForCustomer = () => {
     if (!activeCustomer) return;
     const planId = createCustomPlan(`${activeCustomer.name} solution ${activeCustomer.solutionPlanIds.length + 1}`);
+    updateCustomPlanAccess(planId, {
+      visibility: activeCustomer.visibility,
+      sharedUserIds: activeCustomer.sharedUserIds,
+    });
     updateCustomer(activeCustomer.id, {
       solutionPlanIds: [...new Set([...activeCustomer.solutionPlanIds, planId])],
     });
@@ -304,21 +316,57 @@ export function CrmPanel() {
                     {formatDate(activeCustomer.updatedAt)}
                   </p>
                 </div>
-                <div className="flex rounded-xl border border-app-line-mid bg-app-surface p-1">
-                  {(["solution", "info"] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setDetailTab(tab)}
-                      className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                        detailTab === tab
-                          ? "bg-app-primary text-app-on-primary shadow"
-                          : "text-app-muted hover:bg-app-surface-2 hover:text-app-text"
-                      }`}
+                <div className="flex flex-wrap items-start justify-end gap-3">
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-app-line-subtle bg-app-surface px-3 py-2 text-xs text-app-muted">
+                    <span className="font-semibold text-app-text">Access</span>
+                    <select
+                      value={activeCustomer.visibility}
+                      onChange={(e) => patch({ visibility: e.target.value === "private" ? "private" : "company" })}
+                      className="rounded-lg border border-app-line-mid bg-app-panel-bg px-2 py-1 text-xs text-app-text outline-none transition focus:border-app-primary"
                     >
-                      {tab === "solution" ? "Solution" : "Info"}
-                    </button>
-                  ))}
+                      <option value="company">Company</option>
+                      <option value="private">Private</option>
+                    </select>
+                    {activeCustomer.visibility === "private" ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {PISELL_USERS.map((u) => (
+                          <label
+                            key={u.id}
+                            className="inline-flex items-center gap-1 rounded-lg border border-app-line-subtle px-2 py-1"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={activeCustomer.sharedUserIds.includes(u.id)}
+                              onChange={(e) => {
+                                const next = e.target.checked
+                                  ? [...activeCustomer.sharedUserIds, u.id]
+                                  : activeCustomer.sharedUserIds.filter((id) => id !== u.id);
+                                patch({ sharedUserIds: next });
+                              }}
+                              className="accent-app-primary"
+                            />
+                            {u.name}
+                          </label>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="flex rounded-xl border border-app-line-mid bg-app-surface p-1">
+                    {(["solution", "info"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setDetailTab(tab)}
+                        className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                          detailTab === tab
+                            ? "bg-app-primary text-app-on-primary shadow"
+                            : "text-app-muted hover:bg-app-surface-2 hover:text-app-text"
+                        }`}
+                      >
+                        {tab === "solution" ? "Solution" : "Info"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </section>

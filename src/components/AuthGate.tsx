@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { AUTH_CONFIG } from "../config/auth";
+import { AUTH_CONFIG, findPisellUser, getSignedInPisellUser } from "../config/auth";
 import { ThemeSync } from "./ThemeSync";
 
 type Props = {
@@ -10,7 +10,7 @@ type Props = {
 export function AuthGate({ children }: Props) {
   const [ok, setOk] = useState(() => {
     try {
-      return window.sessionStorage.getItem(AUTH_CONFIG.sessionKey) === "1";
+      return Boolean(getSignedInPisellUser());
     } catch {
       return false;
     }
@@ -55,9 +55,11 @@ export function AuthGate({ children }: Props) {
         className="flex min-h-[380px] flex-col justify-center p-6 sm:p-8"
         onSubmit={(e) => {
           e.preventDefault();
-            if (account.trim() === AUTH_CONFIG.account && password === AUTH_CONFIG.password) {
+            const user = findPisellUser(account, password);
+            if (user) {
               try {
-                window.sessionStorage.setItem(AUTH_CONFIG.sessionKey, "1");
+                window.sessionStorage.setItem(AUTH_CONFIG.sessionKey, user.id);
+                window.sessionStorage.removeItem(AUTH_CONFIG.legacySessionKey);
               } catch {
                 /* keep session in memory */
               }

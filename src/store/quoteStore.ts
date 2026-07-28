@@ -52,6 +52,7 @@ import type {
 import { DEFAULT_UI_THEME_BUNDLE, normalizeUiThemeBundle } from "../theme/uiThemePresets";
 import { normalizeQuotePdfExportStyle } from "../theme/quotePdfStyle";
 import { DEFAULT_MAP_COLOR } from "../theme/mapColorPresets";
+import { canReadPlanAccess, getCurrentPisellUser, normalizePlanVisibility, uniqueUserIds } from "../config/auth";
 import type { MapThemeMode } from "../icons/mapColors";
 import { HARDWARE_ICON_IDS } from "../icons/hardwareGlyphs";
 import { HARDWARE_IOT_BUCKET_CATEGORY_NAME, UNCATEGORIZED_CATEGORY_NAME } from "../constants/materialCategories";
@@ -272,6 +273,9 @@ function normalizeCrmCustomer(raw: unknown): CrmCustomer | null {
     industry,
     contact,
     logoDataUrl: typeof r.logoDataUrl === "string" || r.logoDataUrl === null ? r.logoDataUrl : null,
+    ownerUserId: typeof r.ownerUserId === "string" && r.ownerUserId.trim() ? r.ownerUserId.trim() : "pisell",
+    visibility: normalizePlanVisibility(r.visibility),
+    sharedUserIds: uniqueUserIds(r.sharedUserIds),
     companyLegalName: str(r.companyLegalName),
     customerType: oneOf(r.customerType, ["lead", "prospect", "customer", "partner", "inactive"] as const, "customer"),
     stage: oneOf(r.stage, ["new", "contacted", "qualified", "proposal", "negotiation", "won", "lost"] as const, "qualified"),
@@ -332,6 +336,10 @@ type State = {
   loadCustomPlan: (id: string) => void;
   deleteCustomPlan: (id: string) => void;
   renameCustomPlan: (id: string, name: string) => void;
+  updateCustomPlanAccess: (
+    id: string,
+    patch: Partial<Pick<SavedCustomPlan, "visibility" | "sharedUserIds">>,
+  ) => void;
   /** 从 localStorage / 项目 data 文件 / IndexedDB 恢复当前方案工作区 */
   recoverCustomPlanWorkspaceFromLocalStorageBackup: () => Promise<boolean>;
   /** 强制从 data/marketing-quote-v1.json 重新加载整份数据 */
@@ -824,6 +832,9 @@ export const useQuoteStore = create<State>()(
           industry: "Other",
           contact: "",
           logoDataUrl: null,
+          ownerUserId: getCurrentPisellUser().id,
+          visibility: "company",
+          sharedUserIds: [],
           companyLegalName: "",
           customerType: "customer",
           stage: "new",
@@ -868,6 +879,10 @@ export const useQuoteStore = create<State>()(
                     patch.solutionPlanIds !== undefined
                       ? [...new Set(patch.solutionPlanIds.filter(Boolean))]
                       : c.solutionPlanIds,
+                  visibility:
+                    patch.visibility !== undefined ? normalizePlanVisibility(patch.visibility) : c.visibility,
+                  sharedUserIds:
+                    patch.sharedUserIds !== undefined ? uniqueUserIds(patch.sharedUserIds) : c.sharedUserIds,
                   updatedAt: Date.now(),
                 }
               : c,
@@ -1058,7 +1073,17 @@ export const useQuoteStore = create<State>()(
         }
         const id = crypto.randomUUID();
         const planName = name?.trim() || defaultCustomPlanName(s.savedCustomPlans, locale);
-        const plan: SavedCustomPlan = { id, name: planName, createdAt: now, updatedAt: now, data };
+        const currentUser = getCurrentPisellUser();
+        const plan: SavedCustomPlan = {
+          id,
+          name: planName,
+          createdAt: now,
+          updatedAt: now,
+          ownerUserId: currentUser.id,
+          visibility: "company",
+          sharedUserIds: [],
+          data,
+        };
         set({
           savedCustomPlans: [...s.savedCustomPlans, plan],
           activeCustomPlanId: id,
@@ -1073,7 +1098,17 @@ export const useQuoteStore = create<State>()(
         const id = crypto.randomUUID();
         const planName = name?.trim() || defaultCustomPlanName(get().savedCustomPlans, locale);
         const data = emptyCustomPlanSnapshot();
-        const plan: SavedCustomPlan = { id, name: planName, createdAt: now, updatedAt: now, data };
+        const currentUser = getCurrentPisellUser();
+        const plan: SavedCustomPlan = {
+          id,
+          name: planName,
+          createdAt: now,
+          updatedAt: now,
+          ownerUserId: currentUser.id,
+          visibility: "company",
+          sharedUserIds: [],
+          data,
+        };
         set({
           savedCustomPlans: [...get().savedCustomPlans, plan],
           activeCustomPlanId: id,
@@ -1089,7 +1124,7 @@ export const useQuoteStore = create<State>()(
         if (get().activeCustomPlanId === id) return;
         get().flushActiveCustomPlan();
         const target = get().savedCustomPlans.find((p) => p.id === id);
-        if (!target) return;
+        if (!target || !canReadPlanAccess(target)) return;
         const patch = snapshotToWorkspacePatch(target.data);
         set({ ...patch, activeCustomPlanId: id });
         if (typeof document !== "undefined") {
@@ -1132,6 +1167,24 @@ export const useQuoteStore = create<State>()(
         set((s) => ({
           savedCustomPlans: s.savedCustomPlans.map((p) => (p.id === id ? { ...p, name: n, updatedAt: Date.now() } : p)),
         }));
+      },
+
+      updateCustomPlanAccess: (id, patch) => {
+        set((s) => ({
+          savedCustomPlans: s.savedCustomPlans.map((p) =>
+            p.id === id
+              ? {
+                  ...p,
+                  visibility:
+                    patch.visibility !== undefined ? normalizePlanVisibility(patch.visibility) : p.visibility,
+                  sharedUserIds:
+                    patch.sharedUserIds !== undefined ? uniqueUserIds(patch.sharedUserIds) : p.sharedUserIds,
+                  updatedAt: Date.now(),
+                }
+              : p,
+          ),
+        }));
+        flushQuotePersistDebouncedStorageNow();
       },
 
       recoverCustomPlanWorkspaceFromLocalStorageBackup: async () => {

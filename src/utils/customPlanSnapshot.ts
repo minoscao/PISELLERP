@@ -13,6 +13,7 @@ import type {
   SavedCustomPlan,
 } from "../types";
 import { addonIdsSortedFromQty, mergeAddonQtyMap } from "./customPlanAddonQty";
+import { normalizePlanVisibility, uniqueUserIds } from "../config/auth";
 import { normalizePlacement } from "./hardwareOptionsAddons";
 import { normalizePlanPreviewExtra } from "./planPreviewExtra";
 import { parseQuoteTableOrder } from "./quoteTableOrder";
@@ -332,6 +333,9 @@ export function normalizeSavedCustomPlan(
     name,
     createdAt,
     updatedAt,
+    ownerUserId: typeof o.ownerUserId === "string" && o.ownerUserId.trim() ? o.ownerUserId.trim() : "pisell",
+    visibility: normalizePlanVisibility(o.visibility),
+    sharedUserIds: uniqueUserIds(o.sharedUserIds),
     data: normalizeCustomPlanSnapshotData(o.data, ctx),
   };
 }
@@ -390,7 +394,16 @@ export function resolveCustomPlanHydration(input: CustomPlanHydrationInput): Cus
   if (plans.length === 0 && snapshotRichness(best) > 0) {
     const id = `legacy-${now}`;
     const name = defaultCustomPlanName([], input.locale);
-    plans = [{ id, name, createdAt: now, updatedAt: now, data: best }];
+    plans = [{
+      id,
+      name,
+      createdAt: now,
+      updatedAt: now,
+      ownerUserId: "pisell",
+      visibility: "company",
+      sharedUserIds: [],
+      data: best,
+    }];
     activeId = id;
     return { savedCustomPlans: plans, activeCustomPlanId: activeId, workspace: best };
   }

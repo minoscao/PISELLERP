@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PISELL_USERS } from "../config/auth";
 import { useT } from "../i18n/useT";
 import { useQuoteStore } from "../store/quoteStore";
 import type { CustomPlanTab } from "../types";
@@ -24,6 +25,7 @@ export function CustomPlanPanel() {
   const saveCustomPlan = useQuoteStore((s) => s.saveCustomPlan);
   const loadCustomPlan = useQuoteStore((s) => s.loadCustomPlan);
   const renameCustomPlan = useQuoteStore((s) => s.renameCustomPlan);
+  const updateCustomPlanAccess = useQuoteStore((s) => s.updateCustomPlanAccess);
   const activePlan = savedCustomPlans.find((p) => p.id === activeCustomPlanId) ?? null;
   const [nameDraft, setNameDraft] = useState(activePlan?.name ?? "");
   const [catalogMode, setCatalogMode] = useState<CatalogMode>("hardware");
@@ -92,6 +94,44 @@ export function CustomPlanPanel() {
           Reset
         </button>
       </div>
+
+      {activePlan ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-app-line-subtle bg-app-surface px-3 py-2 text-xs text-app-muted">
+          <span className="font-semibold text-app-text">Access</span>
+          <select
+            value={activePlan.visibility}
+            onChange={(e) =>
+              updateCustomPlanAccess(activePlan.id, {
+                visibility: e.target.value === "private" ? "private" : "company",
+              })
+            }
+            className="rounded-lg border border-app-line-mid bg-app-panel-bg px-2 py-1 text-xs text-app-text outline-none transition focus:border-app-primary"
+          >
+            <option value="company">Company</option>
+            <option value="private">Private</option>
+          </select>
+          {activePlan.visibility === "private" ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {PISELL_USERS.map((u) => (
+                <label key={u.id} className="inline-flex items-center gap-1 rounded-lg border border-app-line-subtle px-2 py-1">
+                  <input
+                    type="checkbox"
+                    checked={activePlan.sharedUserIds.includes(u.id)}
+                    onChange={(e) => {
+                      const next = e.target.checked
+                        ? [...activePlan.sharedUserIds, u.id]
+                        : activePlan.sharedUserIds.filter((id) => id !== u.id);
+                      updateCustomPlanAccess(activePlan.id, { sharedUserIds: next });
+                    }}
+                    className="accent-app-primary"
+                  />
+                  {u.name}
+                </label>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <nav className="ui-planPrimarySwitch" role="group" aria-label={t("cp.workflowNav")}>
         {MAIN.map((row) => (

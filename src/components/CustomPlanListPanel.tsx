@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { canReadPlanAccess, getCurrentPisellUser } from "../config/auth";
 import { useQuoteStore } from "../store/quoteStore";
 import { defaultCustomPlanName } from "../utils/customPlanSnapshot";
 
@@ -20,22 +21,24 @@ export function CustomPlanListPanel({ onOpenPlan }: Props) {
   const setActiveTab = useQuoteStore((s) => s.setActiveTab);
   const setEnterpriseResourceMainTab = useQuoteStore((s) => s.setEnterpriseResourceMainTab);
   const setMaterialsLibraryTab = useQuoteStore((s) => s.setMaterialsLibraryTab);
+  const currentUser = getCurrentPisellUser();
   const [search, setSearch] = useState("");
   const [previewSize, setPreviewSize] = useState(300);
   const [sortMode, setSortMode] = useState<SortMode>("updatedDesc");
 
   const plans = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const readable = savedCustomPlans.filter((p) => canReadPlanAccess(p, currentUser.id));
     const filtered = q
-      ? savedCustomPlans.filter((p) => p.name.toLowerCase().includes(q))
-      : savedCustomPlans;
+      ? readable.filter((p) => p.name.toLowerCase().includes(q))
+      : readable;
     return [...filtered].sort((a, b) => {
       if (sortMode === "updatedAsc") return (a.updatedAt ?? 0) - (b.updatedAt ?? 0);
       if (sortMode === "nameAsc") return a.name.localeCompare(b.name);
       if (sortMode === "pinsDesc") return b.data.placements.length - a.data.placements.length;
       return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
     });
-  }, [savedCustomPlans, search, sortMode]);
+  }, [currentUser.id, savedCustomPlans, search, sortMode]);
 
   const onCreate = () => {
     const locale = uiLocale === "zh" ? "zh" : "en";
@@ -90,7 +93,7 @@ export function CustomPlanListPanel({ onOpenPlan }: Props) {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-app-text">Plans</h3>
-            <p className="mt-1 text-xs text-app-muted">{savedCustomPlans.length} saved plans</p>
+            <p className="mt-1 text-xs text-app-muted">{plans.length} visible plans</p>
           </div>
           <button type="button" onClick={onCreate} className="ui-primaryBtn shrink-0 px-3 py-2 text-sm">
             New plan
@@ -163,6 +166,9 @@ export function CustomPlanListPanel({ onOpenPlan }: Props) {
                   </div>
                   <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
                     <div className="truncate text-sm font-semibold text-app-text">{plan.name}</div>
+                    <div className="text-[11px] text-app-subtle">
+                      {plan.visibility === "private" ? "Private" : "Company"} · Owner {plan.ownerUserId}
+                    </div>
                     <div className="text-xs text-app-muted">{formatTime(plan.updatedAt)}</div>
                     <div className="mt-auto text-xs font-medium text-app-primary">Open</div>
                   </div>
