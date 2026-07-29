@@ -25,7 +25,20 @@ function jsonError(error: unknown) {
   return Response.json({ error: message }, { status: 500, headers: { "Cache-Control": "no-store" } });
 }
 
-async function restoreSeedState(env: WorkerEnv, ctx: WorkerContext): Promise<Response> {
+async function restoreSeedState(env: WorkerEnv, ctx: WorkerContext, request: Request): Promise<Response> {
+  const cloudSeed = await env.ASSETS.fetch(
+    new Request(new URL("/cloud-seed/marketing-quote-v1.json", request.url)),
+  );
+  if (cloudSeed.ok && cloudSeed.body) {
+    return new Response(cloudSeed.body, {
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Pisell-State-Source": "cloud-seed",
+      },
+    });
+  }
+
   const seed = await fetch(env.PERSIST_SEED_URL || DEFAULT_PERSIST_SEED_URL, { cache: "no-store" });
   if (!seed.ok || !seed.body) return new Response(null, { status: 404 });
 
@@ -72,9 +85,9 @@ export default {
 
       if (pathname === "/api/quote-persist") {
         if (request.method === "GET") {
-          if (!env.R2) return restoreSeedState(env, ctx);
+          if (!env.R2) return restoreSeedState(env, ctx, request);
           const response = await getPersistState({ request, env });
-          return response.status === 404 ? restoreSeedState(env, ctx) : response;
+          return response.status === 404 ? restoreSeedState(env, ctx, request) : response;
         }
         if (!env.R2) {
           return Response.json(
