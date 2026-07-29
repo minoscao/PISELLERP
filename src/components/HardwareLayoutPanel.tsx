@@ -28,7 +28,8 @@ import {
   mapLabelPillBorderForMap,
 } from "../icons/mapColors";
 import { useQuoteStore } from "../store/quoteStore";
-import type { HardwarePlacement } from "../types";
+import type { AssociationRow, HardwarePlacement } from "../types";
+import { inferSkuClass } from "../utils/skuSpecifications";
 import { DEFAULT_UI_APPEARANCE } from "../theme/applyAppearance";
 import { iconKeyForAssociation } from "../utils/categoryIcon";
 import { firstLinkedMaterial } from "../utils/associationMaterials";
@@ -44,7 +45,9 @@ const DND_ASSOC_OPTION = "application/x-marketing-assoc-option-v1";
 const MAP_HW_RAIL_LS = "marketing-map-hw-rail-open";
 const MAP_HW_CAT_COLLAPSED_LS = "marketing-map-hw-cat-collapsed";
 const MAP_ZOOM_MIN = 0.4;
-const MAP_ZOOM_MAX = 3.2;
+// The previous 3.2x ceiling was too low for dense floor plans. 16x keeps the
+// full plan reachable while allowing at least five times more close inspection.
+const MAP_ZOOM_MAX = 16;
 /** Zoom at or above this may auto-show device name beside the icon when there is horizontal room. */
 const MAP_AUTO_NAME_ZOOM = 1.1;
 /** At or above this zoom, always auto-show the map title (abbrev / model) even when pins are dense or near edges. */
@@ -122,6 +125,33 @@ function mapMarkerLayoutMetrics(scale: number) {
     gapIcon: Math.max(2, 3.5 * s),
     colGap: Math.max(2, 2.2 * s),
     radius: Math.max(3.5, 6.5 * s),
+  };
+}
+
+function mapFootprintLayout(
+  association: AssociationRow,
+  stageBox: { w: number; h: number },
+  mapZoom: number,
+  iconPx: number,
+) {
+  const skuClass = association.skuClass ?? inferSkuClass(association);
+  if (skuClass === "consumable" || stageBox.w < 1 || stageBox.h < 1) return null;
+  const lengthCm = association.lengthCm ?? (skuClass === "main_device" ? 300 : null);
+  const widthCm = association.widthCm ?? (skuClass === "main_device" ? 300 : null);
+  if (lengthCm == null || widthCm == null) return null;
+
+  // A 4m shortest plan edge maps to the shortest rendered map edge. This keeps
+  // the frame proportional and lets the frame naturally grow as the map zooms.
+  const pxPerCm = Math.max(0.035, Math.min(0.28, Math.min(stageBox.w, stageBox.h) / 4000));
+  const widthPx = Math.max(2, lengthCm * pxPerCm);
+  const heightPx = Math.max(2, widthCm * pxPerCm);
+  const smallerScreenEdge = Math.min(widthPx, heightPx) * mapZoom;
+  return {
+    widthPx,
+    heightPx,
+    // If the product outline would be visually smaller than its marker, retain
+    // the marker alone instead of creating an unreadable nested outline.
+    showFrame: smallerScreenEdge >= iconPx * 1.1,
   };
 }
 
@@ -1241,6 +1271,7 @@ export function HardwareLayoutPanel({
             }`}
           >
             {floorPlanDataUrl ? tr("hw.floorHintUp") : tr("hw.floorHintNone")}
+            <span className="ml-1.5 tabular-nums opacity-75">×{mapZoom.toFixed(mapZoom >= 10 ? 0 : 1)}</span>
           </div>
 
           <div
@@ -1283,6 +1314,7 @@ export function HardwareLayoutPanel({
             {displayPlacements.map((p) => {
               const a = assocMap.get(p.associationId);
               if (!a) return null;
+              const footprint = mapFootprintLayout(a, mapStageBox, mapZoom, mapMarker.iconPx);
               const glyph = iconKeyForAssociation(a, materials, categoryDefs);
               const same = placements.filter((x) => x.associationId === p.associationId);
               const ord = same.findIndex((x) => x.id === p.id) + 1;
@@ -1416,11 +1448,29 @@ export function HardwareLayoutPanel({
                   style={{
                     left: `${p.xPct}%`,
                     top: `${p.yPct}%`,
-                    transform: mapZoom > 0.05 ? `scale(${1 / mapZoom})` : undefined,
-                    transformOrigin: "top left",
                     zIndex: zLift,
                   }}
                 >
+                  {footprint?.showFrame ? (
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute left-0 top-0 border border-dashed"
+                      style={{
+                        width: footprint.widthPx,
+                        height: footprint.heightPx,
+                        borderColor: accent,
+                        borderWidth: Math.max(0.75, 1 / mapZoom),
+                        backgroundColor: `${accent}14`,
+                      }}
+                    />
+                  ) : null}
+                  <div
+                    className="relative z-10"
+                    style={{
+                      transform: mapZoom > 0.05 ? `scale(${1 / mapZoom})` : undefined,
+                      transformOrigin: "top left",
+                    }}
+                  >
                   <button
                     type="button"
                     title={mapHoverFullTitle || undefined}
@@ -1537,6 +1587,7 @@ export function HardwareLayoutPanel({
                       </div>
                     </div>
                   ) : null}
+                  </div>
                 </div>
               );
             })}
