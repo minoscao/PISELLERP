@@ -785,7 +785,7 @@ export const useQuoteStore = create<State>()(
       customPlanSelectStep: "map",
       savedCustomPlans: [],
       activeCustomPlanId: null,
-      materialsLibraryTab: "brand",
+      materialsLibraryTab: "product",
       materialsBrandNavSel: { primary: null, filterKey: null },
       categoryDefs: defaultCategoryDefs,
       materials: [],

@@ -79,6 +79,7 @@ export function MaterialsPanel() {
   const brandNavSel = useQuoteStore((s) => s.materialsBrandNavSel);
   const setMaterialsBrandNavSel = useQuoteStore((s) => s.setMaterialsBrandNavSel);
   const prevMaterialsLibraryTab = useRef<MaterialsLibraryTab | null>(null);
+  const initialLibraryResolved = useRef(false);
   const [catLibOpen, setCatLibOpen] = useState(false);
   /** 产品：与产品库共用 store 左侧筛选；为 true 时忽略筛选显示全部产品类素材 */
   const [matViewAll, setMatViewAll] = useState(true);
@@ -138,6 +139,25 @@ export function MaterialsPanel() {
       (m) => m.imageKind === "technical" || m.imageKind === "softwareDoc" || m.imageKind === "product",
     );
   }, [materials, libraryTab]);
+
+  /** Existing installations may only have catalog/product images. Open that populated library on first visit. */
+  useEffect(() => {
+    if (initialLibraryResolved.current) return;
+    if (libraryTab !== "brand") {
+      initialLibraryResolved.current = true;
+      return;
+    }
+    const hasBrandAssets = materials.some((m) => m.imageKind === "quoteAd");
+    const hasProductAssets = materials.some(
+      (m) => m.imageKind === "technical" || m.imageKind === "softwareDoc" || m.imageKind === "product",
+    );
+    if (hasBrandAssets || !hasProductAssets) {
+      initialLibraryResolved.current = true;
+      return;
+    }
+    initialLibraryResolved.current = true;
+    setMaterialsLibraryTab("product");
+  }, [libraryTab, materials, setMaterialsLibraryTab]);
 
   const categoryRowsForBrand = useMemo((): MaterialCategoryDef[] => {
     const productParents = getProductMaterialCategoryParentKeys();

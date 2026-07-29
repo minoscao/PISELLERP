@@ -6,6 +6,7 @@ export type PersistEnv = {
         all<T>(): Promise<{ results: T[] }>;
         run(): Promise<unknown>;
       };
+      all<T>(): Promise<{ results: T[] }>;
       run(): Promise<unknown>;
     };
     batch(statements: Array<{ run(): Promise<unknown> } | { first<T>(): Promise<T | null> }>): Promise<unknown>;

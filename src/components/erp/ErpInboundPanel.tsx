@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../../i18n/useT";
 import { useQuoteStore } from "../../store/quoteStore";
 import type { AssociationRow, ErpStockKind, ServiceRow, SoftwareFeatureRow } from "../../types";
 import { optionById } from "../../utils/hardwareOptionsAddons";
+import { resolveErpBarcodeScan } from "../../utils/erpInventory";
 
 type Sel = "" | `hw:${string}` | `hw:${string}|${string}` | `sw:${string}` | `sv:${string}`;
 
@@ -21,12 +22,18 @@ function parseSel(s: Sel): { kind: ErpStockKind; id: string; catalogOptionId: st
   return null;
 }
 
+function selFromScanHit(hit: { kind: ErpStockKind; catalogRefId: string; catalogOptionId?: string | null }): Sel {
+  if (hit.kind === "hardware") return `hw:${hit.catalogRefId}${hit.catalogOptionId ? `|${hit.catalogOptionId}` : ""}`;
+  return hit.kind === "software" ? `sw:${hit.catalogRefId}` : `sv:${hit.catalogRefId}`;
+}
+
 export function ErpInboundPanel() {
   const tr = useT();
   const associations = useQuoteStore((s) => s.associations);
   const softwareFeatures = useQuoteStore((s) => s.softwareFeatures);
   const serviceItems = useQuoteStore((s) => s.serviceItems);
   const lines = useQuoteStore((s) => s.erpInventoryLines);
+  const serialItems = useQuoteStore((s) => s.erpSerialItems);
   const materials = useQuoteStore((s) => s.materials);
   const recordErpStockIn = useQuoteStore((s) => s.recordErpStockIn);
 
@@ -34,8 +41,11 @@ export function ErpInboundPanel() {
   const [qty, setQty] = useState(1);
   const [serialText, setSerialText] = useState("");
   const [serialTracking, setSerialTracking] = useState(true);
+  const [scanCode, setScanCode] = useState("");
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState<{ text: string; tone: "ok" | "err" } | null>(null);
+  const scanInputRef = useRef<HTMLInputElement>(null);
+  const scannerBufferRef = useRef({ value: "", lastKeyAt: 0 });
 
   const matById = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
 
@@ -88,6 +98,94 @@ export function ErpInboundPanel() {
     };
   }, [parsed, associations, softwareFeatures, serviceItems, matById, tr]);
 
+  useEffect(() => {
+    scanInputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (parsed?.kind === "hardware" && line) setSerialTracking(line.serialTracking);
+  }, [line, parsed?.kind]);
+
+  const focusScanner = () => window.requestAnimationFrame(() => scanInputRef.current?.focus());
+
+  const matchScannedCode = (rawCode = scanCode) => {
+    const code = rawCode.trim();
+    if (!code) {
+      focusScanner();
+      return;
+    }
+
+    const barcodeHit = resolveErpBarcodeScan(lines, associations, code);
+    const serialHit = serialItems.find((item) => item.serialNumber.toLowerCase() === code.toLowerCase());
+    const hit = barcodeHit ?? (serialHit
+      ? { kind: "hardware" as const, catalogRefId: serialHit.catalogRefId, catalogOptionId: serialHit.catalogOptionId }
+      : null);
+
+    if (hit) {
+      const nextSel = selFromScanHit(hit);
+      const matchedLine = lines.find(
+        (item) =>
+          item.kind === hit.kind &&
+          item.catalogRefId === hit.catalogRefId &&
+          (item.catalogOptionId ?? null) === (hit.kind === "hardware" ? hit.catalogOptionId ?? null : null),
+      );
+      setSel(nextSel);
+      if (hit.kind === "hardware") setSerialTracking(matchedLine?.serialTracking !== false);
+      setScanCode("");
+      setMsg({
+        text: serialHit ? "SN matched. The related product is ready on the right." : "Product matched. Continue scanning SNs if needed.",
+        tone: "ok",
+      });
+      focusScanner();
+      return;
+    }
+
+    if (parsed?.kind === "hardware" && serialTracking) {
+      const currentSerials = [...new Set(serialText.split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
+      if (currentSerials.some((serial) => serial.toLowerCase() === code.toLowerCase())) {
+        setMsg({ text: "This SN has already been captured for this inbound record.", tone: "err" });
+      } else {
+        const nextSerials = [...currentSerials, code];
+        setSerialText(nextSerials.join("\n"));
+        setQty(nextSerials.length);
+        setMsg({ text: `SN captured for the matched hardware (${nextSerials.length}).`, tone: "ok" });
+      }
+      setScanCode("");
+      focusScanner();
+      return;
+    }
+
+    setMsg({ text: "No product matches this barcode or SN. Scan a product barcode first.", tone: "err" });
+    focusScanner();
+  };
+
+  useEffect(() => {
+    const onScannerKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      const now = Date.now();
+      const buffer = scannerBufferRef.current;
+
+      if (event.key === "Enter") {
+        const isScannerInput = buffer.value.length >= 4 && now - buffer.lastKeyAt < 160;
+        if (isScannerInput) {
+          event.preventDefault();
+          matchScannedCode(buffer.value);
+        }
+        scannerBufferRef.current = { value: "", lastKeyAt: 0 };
+        return;
+      }
+
+      if (event.key.length !== 1) return;
+      scannerBufferRef.current = {
+        value: now - buffer.lastKeyAt < 75 ? `${buffer.value}${event.key}` : event.key,
+        lastKeyAt: now,
+      };
+    };
+
+    window.addEventListener("keydown", onScannerKeyDown, true);
+    return () => window.removeEventListener("keydown", onScannerKeyDown, true);
+  }, [matchScannedCode]);
+
   const onSubmitInbound = () => {
     setMsg(null);
     if (!parsed) {
@@ -114,7 +212,51 @@ export function ErpInboundPanel() {
   };
 
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col gap-4 overflow-auto py-1">
+    <div className="mx-auto grid min-h-0 w-full max-w-5xl flex-1 gap-4 overflow-auto py-1 lg:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.45fr)]">
+      <aside className="flex h-fit flex-col gap-4 rounded-xl border border-app-panel-border bg-app-panel-bg p-4 lg:sticky lg:top-1">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-app-subtle">Inbound scanner</p>
+          <h2 className="mt-1 text-base font-semibold text-app-text">Scan barcode or SN to continue</h2>
+          <p className="mt-1 text-xs leading-5 text-app-muted">Keep this field active for a barcode scanner. A matching barcode or SN selects its product automatically.</p>
+        </div>
+        <label className="flex flex-col gap-2 text-xs text-app-muted">
+          <span className="font-medium text-app-text">Barcode or SN</span>
+          <input
+            ref={scanInputRef}
+            value={scanCode}
+            onChange={(event) => setScanCode(event.target.value)}
+            onKeyDown={(event) => {
+              if (!event.defaultPrevented && event.key === "Enter") {
+                event.preventDefault();
+                matchScannedCode();
+              }
+            }}
+            placeholder="Scan or type, then Enter"
+            className="rounded border border-app-line-mid bg-app-surface-2 px-3 py-3 text-sm text-app-text outline-none transition focus:border-app-primary focus:ring-2 focus:ring-app-primary/20"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => matchScannedCode()}
+          className="rounded-lg border border-app-line-mid px-3 py-2 text-sm font-medium text-app-text transition hover:bg-app-surface-2"
+        >
+          Match product
+        </button>
+        <div className="rounded-lg border border-app-line-subtle bg-app-surface-2 px-3 py-3 text-xs text-app-muted">
+          {productCard ? (
+            <>
+              <p className="font-medium text-app-text">Matched product</p>
+              <p className="mt-1 truncate">{productCard.title}</p>
+              {parsed?.kind === "hardware" && serialTracking ? <p className="mt-2 text-app-subtle">After matching, each new scan is captured as an SN.</p> : null}
+            </>
+          ) : (
+            <p>Waiting for a product barcode or a recognised SN.</p>
+          )}
+        </div>
+        {msg ? <p className={`text-xs ${msg.tone === "ok" ? "text-app-success-text" : "text-app-danger-text"}`}>{msg.text}</p> : null}
+      </aside>
+
+      <div className="flex min-w-0 flex-col gap-4">
       <label className="flex flex-col gap-1 text-xs text-app-muted">
         <span className="font-medium text-app-text">{tr("erp.selectProduct")}</span>
         <select
@@ -238,9 +380,7 @@ export function ErpInboundPanel() {
       >
         {tr("erp.confirmInbound")}
       </button>
-      {msg ? (
-        <p className={`text-xs ${msg.tone === "ok" ? "text-app-success-text" : "text-app-danger-text"}`}>{msg.text}</p>
-      ) : null}
+      </div>
     </div>
   );
 }
