@@ -823,7 +823,7 @@ export const useQuoteStore = create<State>()(
       uiLocale: "en",
       uiThemeBundle: DEFAULT_UI_THEME_BUNDLE,
       erpTopModule: "inventory",
-      erpInvSubTab: "inbound",
+      erpInvSubTab: "catalog",
       erpCatalogFocus: null,
       erpCatalogSelection: null,
       erpCatalogActiveKind: "hardware",
@@ -2075,11 +2075,12 @@ export const useQuoteStore = create<State>()(
         })),
 
       setErpTopModule: (m) => {
-        set({ erpTopModule: m === "customer" || m === "inventory" || m === "staff" ? m : "inventory" });
+        void m;
+        set({ erpTopModule: "inventory" });
         flushQuotePersistDebouncedStorageNow();
       },
       setErpInvSubTab: (t) => {
-        set({ erpInvSubTab: t === "inbound" || t === "outbound" || t === "catalog" ? t : "inbound" });
+        set({ erpInvSubTab: t === "inbound" || t === "catalog" ? t : "catalog" });
         flushQuotePersistDebouncedStorageNow();
       },
       setErpCatalogFocus: (k) => set({ erpCatalogFocus: k }),
@@ -2758,11 +2759,10 @@ export const useQuoteStore = create<State>()(
             if (typeof stNav.erpCatalogSearchQuery === "string") {
               next.erpCatalogSearchQuery = stNav.erpCatalogSearchQuery.slice(0, 500);
             }
-            if (stNav.erpTopModule === "customer" || stNav.erpTopModule === "inventory" || stNav.erpTopModule === "staff") {
-              next.erpTopModule = stNav.erpTopModule;
-            }
+            next.erpTopModule = "inventory";
             const ris = stNav.erpInvSubTab;
             if (ris === "inbound" || ris === "catalog") next.erpInvSubTab = ris;
+            else if (ris === "outbound" || ris === "ledger") next.erpInvSubTab = "inbound";
             const snapCtx = {
               materials: next.materials,
               softwareFeatureIds: new Set(next.softwareFeatures.map((f) => f.id)),
@@ -3347,15 +3347,12 @@ export const useQuoteStore = create<State>()(
         const mergedUiLocale: UiLocale = p.uiLocale === "zh" ? "zh" : "en";
         const mergedUiThemeBundle = normalizeUiThemeBundle(p.uiThemeBundle ?? current.uiThemeBundle);
 
-        const mergedErpTopModule: ErpModuleTab =
-          p.erpTopModule === "customer" || p.erpTopModule === "staff" || p.erpTopModule === "inventory"
-            ? p.erpTopModule
-            : current.erpTopModule;
+        const mergedErpTopModule: ErpModuleTab = "inventory";
         const rawInvSub = (p as { erpInvSubTab?: unknown }).erpInvSubTab;
         const mergedErpInvSubTab: ErpInvSubTab =
-          rawInvSub === "inbound" || rawInvSub === "outbound" || rawInvSub === "catalog"
+          rawInvSub === "inbound" || rawInvSub === "catalog"
             ? rawInvSub
-            : rawInvSub === "ledger"
+            : rawInvSub === "ledger" || rawInvSub === "outbound"
               ? "inbound"
               : current.erpInvSubTab;
 

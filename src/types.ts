@@ -600,10 +600,10 @@ export type QuoteTab =
   | "settings";
 
 /** ERP 顶栏模块（Customer / Inventory / Staff） */
-export type ErpModuleTab = "customer" | "inventory" | "staff";
+export type ErpModuleTab = "inventory";
 
 /** 库存子模块 Tab */
-export type ErpInvSubTab = "inbound" | "outbound" | "catalog";
+export type ErpInvSubTab = "inbound" | "catalog";
 
 /** 与硬件行 / 软件功能 / 服务目录对应的库存维度 */
 export type ErpStockKind = "hardware" | "software" | "service";
