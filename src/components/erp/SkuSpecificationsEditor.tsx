@@ -69,7 +69,7 @@ export function SkuSpecificationsEditor({ value, onChange, compact = false }: Sk
     const rect = stageRef.current.getBoundingClientRect();
     const relative = dragging === "length" ? (event.clientX - rect.left) / rect.width : (event.clientY - rect.top) / rect.height;
     const next = rounded(Math.min(600, Math.max(5, relative * 600)));
-    onChange(dragging === "length" ? { lengthCm: next } : { widthCm: next });
+    onChange(dragging === "length" ? { lengthCm: next, skuDimensionsSource: "manual" } : { widthCm: next, skuDimensionsSource: "manual" });
   };
 
   const lengthPct = Math.min(88, Math.max(34, (lengthCm / 600) * 88));
@@ -127,13 +127,13 @@ export function SkuSpecificationsEditor({ value, onChange, compact = false }: Sk
             <div className="absolute bottom-2 right-2 rounded bg-app-surface/90 px-1.5 py-0.5 text-[10px] text-app-subtle">Drag either ruler line</div>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2">
-            <NumberField label="Length" value={lengthCm} suffix="cm" onChange={(next) => onChange({ lengthCm: next })} />
-            <NumberField label="Width" value={widthCm} suffix="cm" onChange={(next) => onChange({ widthCm: next })} />
-            <NumberField label="Height" value={value.heightCm} suffix="cm" onChange={(next) => onChange({ heightCm: next })} />
+            <NumberField label="Length" value={lengthCm} suffix="cm" onChange={(next) => onChange({ lengthCm: next, skuDimensionsSource: "manual" })} />
+            <NumberField label="Width" value={widthCm} suffix="cm" onChange={(next) => onChange({ widthCm: next, skuDimensionsSource: "manual" })} />
+            <NumberField label="Height" value={value.heightCm} suffix="cm" onChange={(next) => onChange({ heightCm: next, skuDimensionsSource: "manual" })} />
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <NumberField label="Weight" value={value.weightKg} suffix="kg" onChange={(next) => onChange({ weightKg: next })} />
-            <NumberField label="Power" value={value.powerWatts} suffix="W" onChange={(next) => onChange({ powerWatts: next })} />
+            <NumberField label="Weight" value={value.weightKg} suffix="kg" onChange={(next) => onChange({ weightKg: next, skuDimensionsSource: "manual" })} />
+            <NumberField label="Power" value={value.powerWatts} suffix="W" onChange={(next) => onChange({ powerWatts: next, skuDimensionsSource: "manual" })} />
           </div>
         </>
       ) : (

@@ -238,6 +238,8 @@ export type AssociationRow = {
   deviceModel: string;
   /** SKU logistics and planning class. Stands, mounts and brackets are assistive equipment. */
   skuClass?: SkuClass;
+  /** Whether the product footprint comes from the PiSell catalog, manual input, or the 300 cm fallback. */
+  skuDimensionsSource?: "catalog" | "manual" | "default";
   /** Device footprint and technical specifications. Values use cm, kg and W. */
   lengthCm?: number | null;
   widthCm?: number | null;
