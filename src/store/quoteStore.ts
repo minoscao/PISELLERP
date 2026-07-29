@@ -17,6 +17,7 @@ import type {
   CustomPlanSelectStep,
   CustomPlanTab,
   HardwarePlacement,
+  MapScaleReference,
   MaterialCategoryDef,
   MaterialPage,
   PlanPage,
@@ -77,6 +78,7 @@ import {
   normalizePlacement,
 } from "../utils/hardwareOptionsAddons";
 import { normalizePlanPreviewExtra } from "../utils/planPreviewExtra";
+import { normalizeMapScaleReference } from "../utils/mapScaleReference";
 import { normalizeSoftwareFeatureCategoryStored } from "../constants/softwareFeatureCategories";
 import { normalizeServiceCategoryStored } from "../constants/serviceCategoryPresets";
 import { migrateSoftwareMaterialCategoryPath } from "../utils/localeDataMigration";
@@ -407,6 +409,8 @@ type State = {
    * false：旧数据（相对整个地图容器），打开地图后会一次性换算并写回为 true。
    */
   floorPlanPlacementImageSpace: boolean;
+  /** The saved real-world line used to convert floor-plan pixels into cm. */
+  mapScaleReference: MapScaleReference | null;
   mapShowName: boolean;
   mapShowQuantity: boolean;
   /** PDF / Excel 汇总表硬件行是否附带产品缩略图 */
@@ -449,6 +453,7 @@ type State = {
   setQuoteFooterCustom: (t: string) => void;
   setFloorPlanDataUrl: (url: string | null) => void;
   setFloorPlanOpacityPct: (pct: number) => void;
+  setMapScaleReference: (reference: MapScaleReference | null) => void;
   /** 将旧版「容器百分比」坐标批量写入为图片矩形百分比，并标记为 image space */
   migrateFloorPlacementsToImageSpace: (updates: { id: string; xPct: number; yPct: number }[]) => void;
   /** 批量替换地图标记（用于一键清空后的撤销恢复） */
@@ -803,6 +808,7 @@ export const useQuoteStore = create<State>()(
       floorPlanDataUrl: null,
       floorPlanOpacityPct: 100,
       floorPlanPlacementImageSpace: true,
+      mapScaleReference: null,
       mapShowName: true,
       mapShowQuantity: false,
       quoteExportIncludeImages: false,
@@ -1364,7 +1370,9 @@ export const useQuoteStore = create<State>()(
           const next: {
             floorPlanDataUrl: string | null;
             floorPlanPlacementImageSpace?: boolean;
+            mapScaleReference?: MapScaleReference | null;
           } = { floorPlanDataUrl: url };
+          if (url !== prev) next.mapScaleReference = null;
           if (url != null && prev != null && url !== prev) {
             next.floorPlanPlacementImageSpace = false;
           }
@@ -1377,6 +1385,10 @@ export const useQuoteStore = create<State>()(
           floorPlanOpacityPct:
             typeof pct === "number" && Number.isFinite(pct) ? Math.min(100, Math.max(0, Math.round(pct))) : 100,
         });
+        notifyCustomPlanWorkspaceChanged(get);
+      },
+      setMapScaleReference: (reference) => {
+        set({ mapScaleReference: normalizeMapScaleReference(reference) });
         notifyCustomPlanWorkspaceChanged(get);
       },
       setPlacements: (placements) => {
@@ -2558,6 +2570,7 @@ export const useQuoteStore = create<State>()(
           floorPlanDataUrl: s.floorPlanDataUrl,
           floorPlanOpacityPct: s.floorPlanOpacityPct,
           floorPlanPlacementImageSpace: s.floorPlanPlacementImageSpace,
+          mapScaleReference: s.mapScaleReference,
           mapShowName: s.mapShowName,
           mapShowQuantity: s.mapShowQuantity,
           quoteExportIncludeImages: s.quoteExportIncludeImages,
@@ -2641,6 +2654,8 @@ export const useQuoteStore = create<State>()(
             }
             if (typeof st.floorPlanPlacementImageSpace === "boolean")
               next.floorPlanPlacementImageSpace = st.floorPlanPlacementImageSpace;
+            if ((st as { mapScaleReference?: unknown }).mapScaleReference !== undefined)
+              next.mapScaleReference = normalizeMapScaleReference((st as { mapScaleReference?: unknown }).mapScaleReference);
             if (typeof st.mapShowName === "boolean") next.mapShowName = st.mapShowName;
             if (typeof st.mapShowQuantity === "boolean") next.mapShowQuantity = st.mapShowQuantity;
             if (typeof (st as { quoteExportIncludeImages?: unknown }).quoteExportIncludeImages === "boolean")
@@ -3017,6 +3032,7 @@ export const useQuoteStore = create<State>()(
         floorPlanDataUrl: s.floorPlanDataUrl,
         floorPlanOpacityPct: s.floorPlanOpacityPct,
         floorPlanPlacementImageSpace: s.floorPlanPlacementImageSpace,
+        mapScaleReference: s.mapScaleReference,
         mapShowName: s.mapShowName,
         mapShowQuantity: s.mapShowQuantity,
         quoteExportIncludeImages: s.quoteExportIncludeImages,
@@ -3076,6 +3092,7 @@ export const useQuoteStore = create<State>()(
           floorPlanDataUrl?: string | null;
           floorPlanOpacityPct?: number;
           floorPlanPlacementImageSpace?: boolean;
+          mapScaleReference?: MapScaleReference | null;
           mapShowName?: boolean;
           mapShowQuantity?: boolean;
           quoteExportIncludeImages?: boolean;
@@ -3574,6 +3591,8 @@ export const useQuoteStore = create<State>()(
               ? Math.min(100, Math.max(0, Math.round(p.floorPlanOpacityPct)))
               : current.floorPlanOpacityPct,
           floorPlanPlacementImageSpace: p.floorPlanPlacementImageSpace === true,
+          mapScaleReference:
+            p.mapScaleReference !== undefined ? normalizeMapScaleReference(p.mapScaleReference) : current.mapScaleReference,
           mapShowName: p.mapShowName ?? current.mapShowName,
           mapShowQuantity: p.mapShowQuantity ?? current.mapShowQuantity,
           quoteExportIncludeImages:
@@ -3630,6 +3649,7 @@ export const useQuoteStore = create<State>()(
           floorPlanDataUrl: mergedBase.floorPlanDataUrl,
           floorPlanOpacityPct: mergedBase.floorPlanOpacityPct,
           floorPlanPlacementImageSpace: mergedBase.floorPlanPlacementImageSpace,
+          mapScaleReference: mergedBase.mapScaleReference,
           mapShowName: mergedBase.mapShowName,
           mapShowQuantity: mergedBase.mapShowQuantity,
           mapTheme: mergedBase.mapTheme,

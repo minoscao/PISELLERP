@@ -358,12 +358,22 @@ export type CustomPlanTab = "select" | "plan" | "quote";
 /** 定制方案 · 选型子步骤 */
 export type CustomPlanSelectStep = "map" | "software" | "services";
 
+/** A measured reference drawn directly on a floor plan. Coordinates are relative to the displayed plan. */
+export type MapScaleReference = {
+  startXPct: number;
+  startYPct: number;
+  endXPct: number;
+  endYPct: number;
+  lengthCm: number;
+};
+
 /** 一套定制方案的工作区快照（地图 / 选型 / 方案书 / 报价） */
 export type CustomPlanSnapshotData = {
   placements: HardwarePlacement[];
   floorPlanDataUrl: string | null;
   floorPlanOpacityPct: number;
   floorPlanPlacementImageSpace: boolean;
+  mapScaleReference: MapScaleReference | null;
   mapShowName: boolean;
   mapShowQuantity: boolean;
   mapTheme: MapThemeMode;

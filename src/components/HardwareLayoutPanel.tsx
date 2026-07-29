@@ -28,7 +28,7 @@ import {
   mapLabelPillBorderForMap,
 } from "../icons/mapColors";
 import { useQuoteStore } from "../store/quoteStore";
-import type { AssociationRow, HardwarePlacement } from "../types";
+import type { AssociationRow, HardwarePlacement, MapScaleReference } from "../types";
 import { inferSkuClass } from "../utils/skuSpecifications";
 import { DEFAULT_UI_APPEARANCE } from "../theme/applyAppearance";
 import { iconKeyForAssociation } from "../utils/categoryIcon";
@@ -133,6 +133,7 @@ function mapFootprintLayout(
   stageBox: { w: number; h: number },
   mapZoom: number,
   iconPx: number,
+  scaleReference: MapScaleReference | null,
 ) {
   const skuClass = association.skuClass ?? inferSkuClass(association);
   if (skuClass === "consumable" || stageBox.w < 1 || stageBox.h < 1) return null;
@@ -140,9 +141,18 @@ function mapFootprintLayout(
   const widthCm = association.widthCm ?? (skuClass === "main_device" ? 300 : null);
   if (lengthCm == null || widthCm == null) return null;
 
-  // A 4m shortest plan edge maps to the shortest rendered map edge. This keeps
-  // the frame proportional and lets the frame naturally grow as the map zooms.
-  const pxPerCm = Math.max(0.035, Math.min(0.28, Math.min(stageBox.w, stageBox.h) / 4000));
+  const refPx = scaleReference
+    ? Math.hypot(
+        ((scaleReference.endXPct - scaleReference.startXPct) / 100) * stageBox.w,
+        ((scaleReference.endYPct - scaleReference.startYPct) / 100) * stageBox.h,
+      )
+    : 0;
+  // A calibrated line is the source of truth. The fallback preserves the
+  // pre-existing useful preview before a drawing has been measured.
+  const pxPerCm =
+    scaleReference && refPx > 0
+      ? refPx / scaleReference.lengthCm
+      : Math.max(0.035, Math.min(0.28, Math.min(stageBox.w, stageBox.h) / 4000));
   const widthPx = Math.max(2, lengthCm * pxPerCm);
   const heightPx = Math.max(2, widthCm * pxPerCm);
   const smallerScreenEdge = Math.min(widthPx, heightPx) * mapZoom;
@@ -152,6 +162,17 @@ function mapFootprintLayout(
     // If the product outline would be visually smaller than its marker, retain
     // the marker alone instead of creating an unreadable nested outline.
     showFrame: smallerScreenEdge >= iconPx * 1.1,
+  };
+}
+
+function mapReferenceLineLayout(reference: Omit<MapScaleReference, "lengthCm">, stageBox: { w: number; h: number }) {
+  const dx = ((reference.endXPct - reference.startXPct) / 100) * stageBox.w;
+  const dy = ((reference.endYPct - reference.startYPct) / 100) * stageBox.h;
+  return {
+    left: `${reference.startXPct}%`,
+    top: `${reference.startYPct}%`,
+    width: Math.hypot(dx, dy),
+    angle: (Math.atan2(dy, dx) * 180) / Math.PI,
   };
 }
 
@@ -182,6 +203,8 @@ export function HardwareLayoutPanel({
   const setFloorPlanOpacityPct = useQuoteStore((s) => s.setFloorPlanOpacityPct);
   const floorPlanPlacementImageSpace = useQuoteStore((s) => s.floorPlanPlacementImageSpace);
   const migrateFloorPlacementsToImageSpace = useQuoteStore((s) => s.migrateFloorPlacementsToImageSpace);
+  const mapScaleReference = useQuoteStore((s) => s.mapScaleReference);
+  const setMapScaleReference = useQuoteStore((s) => s.setMapScaleReference);
   const setPlacements = useQuoteStore((s) => s.setPlacements);
   const mapShowName = useQuoteStore((s) => s.mapShowName);
   const mapShowQuantity = useQuoteStore((s) => s.mapShowQuantity);
@@ -213,6 +236,7 @@ export function HardwareLayoutPanel({
   const floorImgRef = useRef<HTMLImageElement>(null);
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const mapPanDragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const mapReferenceDragRef = useRef<Omit<MapScaleReference, "lengthCm"> | null>(null);
   const captureElRef = useRef<HTMLElement | null>(null);
   const [floorModalOpen, setFloorModalOpen] = useState(false);
   const placementsUndoStack = useRef<HardwarePlacement[][]>([]);
@@ -295,6 +319,18 @@ export function HardwareLayoutPanel({
   const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
   const [mapPanning, setMapPanning] = useState(false);
   const [mapHoverPlacementId, setMapHoverPlacementId] = useState<string | null>(null);
+  const [mapTool, setMapTool] = useState<"pan" | "measure">("pan");
+  const [mapReferenceDraft, setMapReferenceDraft] = useState<Omit<MapScaleReference, "lengthCm"> | null>(null);
+  const [mapReferenceLengthCm, setMapReferenceLengthCm] = useState("100");
+
+  const mapReferenceForDisplay = mapReferenceDraft ?? mapScaleReference;
+  const mapReferenceLine = useMemo(
+    () =>
+      mapReferenceForDisplay && mapStageBox.w > 0 && mapStageBox.h > 0
+        ? mapReferenceLineLayout(mapReferenceForDisplay, mapStageBox)
+        : null,
+    [mapReferenceForDisplay, mapStageBox],
+  );
 
   useLayoutEffect(() => {
     mapStageBoxRef.current = mapStageBox;
@@ -627,6 +663,66 @@ export function HardwareLayoutPanel({
     setMapPan({ x: 0, y: 0 });
   }, []);
 
+  const pointInMapStage = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const stage = mapStageRef.current;
+    if (!stage) return null;
+    const rect = stage.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return null;
+    return {
+      xPct: Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100)),
+      yPct: Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100)),
+    };
+  }, []);
+
+  const beginMapReference = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      const el = e.target as HTMLElement;
+      if (el.closest("[data-map-marker-chip]") || el.closest("[data-map-marker-panel]")) return;
+      const point = pointInMapStage(e);
+      if (!point) return;
+      e.preventDefault();
+      const draft = { startXPct: point.xPct, startYPct: point.yPct, endXPct: point.xPct, endYPct: point.yPct };
+      mapReferenceDragRef.current = draft;
+      setMapReferenceDraft(draft);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [pointInMapStage],
+  );
+
+  const moveMapReference = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const draft = mapReferenceDragRef.current;
+      if (!draft) return;
+      const point = pointInMapStage(e);
+      if (!point) return;
+      const dx = point.xPct - draft.startXPct;
+      const dy = point.yPct - draft.startYPct;
+      const constrained = e.shiftKey
+        ? Math.abs(dx) >= Math.abs(dy)
+          ? { xPct: point.xPct, yPct: draft.startYPct }
+          : { xPct: draft.startXPct, yPct: point.yPct }
+        : point;
+      const next = { ...draft, endXPct: constrained.xPct, endYPct: constrained.yPct };
+      mapReferenceDragRef.current = next;
+      setMapReferenceDraft(next);
+    },
+    [pointInMapStage],
+  );
+
+  const endMapReference = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const draft = mapReferenceDragRef.current;
+    if (!draft) return;
+    mapReferenceDragRef.current = null;
+    const length = Math.hypot(draft.endXPct - draft.startXPct, draft.endYPct - draft.startYPct);
+    setMapReferenceDraft(length >= 0.3 ? draft : null);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* noop */
+    }
+  }, []);
+
   const onMapPanPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.button !== 1) return;
     const el = e.target as HTMLElement;
@@ -666,6 +762,28 @@ export function HardwareLayoutPanel({
       /* noop */
     }
   }, []);
+
+  const onMapPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (mapTool === "measure") beginMapReference(e);
+      else onMapPanPointerDown(e);
+    },
+    [beginMapReference, mapTool, onMapPanPointerDown],
+  );
+  const onMapPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (mapReferenceDragRef.current) moveMapReference(e);
+      else onMapPanPointerMove(e);
+    },
+    [moveMapReference, onMapPanPointerMove],
+  );
+  const onMapPointerEnd = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (mapReferenceDragRef.current) endMapReference(e);
+      else endMapPanDrag(e);
+    },
+    [endMapPanDrag, endMapReference],
+  );
 
   useEffect(() => {
     const el = mapInnerRef.current;
@@ -1091,6 +1209,69 @@ export function HardwareLayoutPanel({
               {tr("hw.viewList")}
             </button>
           </div>
+          <button
+            type="button"
+            disabled={!floorPlanDataUrl}
+            onClick={() => {
+              setMapTool((tool) => (tool === "measure" ? "pan" : "measure"));
+              setMapReferenceDraft(null);
+            }}
+            className={`rounded-lg border px-2.5 py-1.5 text-xs disabled:opacity-40 ${
+              mapTool === "measure"
+                ? "border-app-primary bg-app-primary text-app-on-primary"
+                : "border-app-line-strong text-app-muted hover:bg-app-surface-2"
+            }`}
+            title="Draw a reference line on the floor plan, then enter its real length."
+          >
+            {mapTool === "measure" ? "Drawing scale" : "Calibrate scale"}
+          </button>
+          {mapReferenceDraft ? (
+            <div className="flex items-center gap-1.5 rounded-lg border border-app-primary/50 bg-app-surface-2 px-1.5 py-1">
+              <label className="flex items-center gap-1 text-xs text-app-muted">
+                <span className="whitespace-nowrap">Line length</span>
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={mapReferenceLengthCm}
+                  onChange={(e) => setMapReferenceLengthCm(e.target.value)}
+                  className="w-16 rounded border border-app-line-mid bg-app-bg px-1.5 py-1 text-app-text outline-none focus:border-app-primary"
+                />
+                <span>cm</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  const lengthCm = Number(mapReferenceLengthCm);
+                  if (!Number.isFinite(lengthCm) || lengthCm <= 0) return;
+                  setMapScaleReference({ ...mapReferenceDraft, lengthCm });
+                  setMapReferenceDraft(null);
+                  setMapTool("pan");
+                }}
+                className="rounded-md bg-app-primary px-2 py-1 text-xs font-medium text-app-on-primary hover:bg-app-primary-hover"
+              >
+                Apply scale
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapReferenceDraft(null)}
+                className="rounded-md px-1.5 py-1 text-xs text-app-muted hover:bg-app-bg"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : mapScaleReference ? (
+            <div className="flex items-center gap-1.5 rounded-lg border border-app-line-mid px-1.5 py-1 text-xs text-app-muted">
+              <span>{mapScaleReference.lengthCm} cm scale</span>
+              <button
+                type="button"
+                onClick={() => setMapScaleReference(null)}
+                className="text-app-danger-text hover:underline"
+              >
+                Clear
+              </button>
+            </div>
+          ) : null}
           <PhotoUploadModal
             open={floorModalOpen}
             onClose={() => setFloorModalOpen(false)}
@@ -1108,7 +1289,11 @@ export function HardwareLayoutPanel({
           <button
             type="button"
             disabled={!floorPlanDataUrl}
-            onClick={() => setFloorPlanDataUrl(null)}
+            onClick={() => {
+              setFloorPlanDataUrl(null);
+              setMapReferenceDraft(null);
+              setMapTool("pan");
+            }}
             className="rounded-lg border border-app-line-strong px-2.5 py-1.5 text-xs hover:bg-app-surface-2 disabled:opacity-40"
           >
             {tr("hw.clearFloor")}
@@ -1219,10 +1404,10 @@ export function HardwareLayoutPanel({
           {mapPaneMode === "map" ? (
           <div
             ref={mapInnerRef}
-          onPointerDown={onMapPanPointerDown}
-          onPointerMove={onMapPanPointerMove}
-          onPointerUp={endMapPanDrag}
-          onPointerCancel={endMapPanDrag}
+          onPointerDown={onMapPointerDown}
+          onPointerMove={onMapPointerMove}
+          onPointerUp={onMapPointerEnd}
+          onPointerCancel={onMapPointerEnd}
           onDragOverCapture={(e) => {
             const types = [...e.dataTransfer.types];
             if (types.includes(DND_ASSOC_MIME) || types.includes(DND_ASSOC_OPTION)) {
@@ -1260,7 +1445,7 @@ export function HardwareLayoutPanel({
           }}
             className={`relative min-h-[min(60vh,560px)] flex-1 overflow-hidden rounded-2xl border border-app-line-strong shadow-inner ${
               mapTheme === "dark" ? "bg-app-surface-2" : "bg-app-bg"
-            } ${mapPanning ? "cursor-grabbing" : "cursor-grab"}`}
+            } ${mapTool === "measure" ? "cursor-crosshair" : mapPanning ? "cursor-grabbing" : "cursor-grab"}`}
           >
           {!floorPlanDataUrl && (
             <div className="pointer-events-none absolute inset-0 z-0 app-map-grid-bg" />
@@ -1298,6 +1483,33 @@ export function HardwareLayoutPanel({
               />
             ) : null}
 
+            {mapReferenceLine && mapReferenceForDisplay ? (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute z-[7] h-0"
+                style={{
+                  left: mapReferenceLine.left,
+                  top: mapReferenceLine.top,
+                  width: mapReferenceLine.width,
+                  transform: `rotate(${mapReferenceLine.angle}deg)`,
+                  transformOrigin: "0 0",
+                }}
+              >
+                <div className="absolute left-0 top-0 h-0.5 w-full bg-app-primary shadow-[0_0_0_1px_rgb(255_255_255_/_0.8)]" />
+                <div className="absolute -left-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-white bg-app-primary shadow" />
+                <div className="absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-white bg-app-primary shadow" />
+                <span
+                  className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-[calc(100%+5px)] whitespace-nowrap rounded bg-app-primary px-1.5 py-0.5 text-[10px] font-semibold text-app-on-primary shadow"
+                  style={{
+                    transform: `translateX(-50%) translateY(5px) rotate(${-mapReferenceLine.angle}deg) scale(${1 / mapZoom})`,
+                    transformOrigin: "top center",
+                  }}
+                >
+                  {mapReferenceDraft ? "Set line length" : `${mapScaleReference?.lengthCm ?? ""} cm`}
+                </span>
+              </div>
+            ) : null}
+
             {maxOptionCount > 1
               ? Array.from({ length: maxOptionCount - 1 }, (_, i) => {
                   const leftPct = 10 + ((i + 1) / maxOptionCount) * 80;
@@ -1314,7 +1526,7 @@ export function HardwareLayoutPanel({
             {displayPlacements.map((p) => {
               const a = assocMap.get(p.associationId);
               if (!a) return null;
-              const footprint = mapFootprintLayout(a, mapStageBox, mapZoom, mapMarker.iconPx);
+              const footprint = mapFootprintLayout(a, mapStageBox, mapZoom, mapMarker.iconPx, mapScaleReference);
               const glyph = iconKeyForAssociation(a, materials, categoryDefs);
               const same = placements.filter((x) => x.associationId === p.associationId);
               const ord = same.findIndex((x) => x.id === p.id) + 1;

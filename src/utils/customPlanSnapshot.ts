@@ -6,6 +6,7 @@ import type {
   CustomPlanSoftwareLine,
   CustomPlanTab,
   HardwarePlacement,
+  MapScaleReference,
   MaterialPage,
   PlanPage,
   QuotePriceTier,
@@ -17,12 +18,14 @@ import { normalizePlanVisibility, uniqueUserIds } from "../config/auth";
 import { normalizePlacement } from "./hardwareOptionsAddons";
 import { normalizePlanPreviewExtra } from "./planPreviewExtra";
 import { parseQuoteTableOrder } from "./quoteTableOrder";
+import { normalizeMapScaleReference } from "./mapScaleReference";
 
 export type CustomPlanSnapshotSource = {
   placements: HardwarePlacement[];
   floorPlanDataUrl: string | null;
   floorPlanOpacityPct: number;
   floorPlanPlacementImageSpace: boolean;
+  mapScaleReference: MapScaleReference | null;
   mapShowName: boolean;
   mapShowQuantity: boolean;
   mapTheme: MapThemeMode;
@@ -147,6 +150,7 @@ export function captureCustomPlanSnapshotFromSlice(
     floorPlanDataUrl: slice.floorPlanDataUrl ?? empty.floorPlanDataUrl,
     floorPlanOpacityPct: slice.floorPlanOpacityPct ?? empty.floorPlanOpacityPct,
     floorPlanPlacementImageSpace: slice.floorPlanPlacementImageSpace ?? empty.floorPlanPlacementImageSpace,
+    mapScaleReference: slice.mapScaleReference ?? empty.mapScaleReference,
     mapShowName: slice.mapShowName ?? empty.mapShowName,
     mapShowQuantity: slice.mapShowQuantity ?? empty.mapShowQuantity,
     mapTheme: slice.mapTheme ?? empty.mapTheme,
@@ -170,6 +174,7 @@ export function emptyCustomPlanSnapshot(): CustomPlanSnapshotData {
     floorPlanDataUrl: null,
     floorPlanOpacityPct: 100,
     floorPlanPlacementImageSpace: true,
+    mapScaleReference: null,
     mapShowName: true,
     mapShowQuantity: false,
     mapTheme: "dark",
@@ -196,6 +201,7 @@ export function captureCustomPlanSnapshot(s: CustomPlanSnapshotSource): CustomPl
         ? Math.min(100, Math.max(0, Math.round(s.floorPlanOpacityPct)))
         : 100,
     floorPlanPlacementImageSpace: s.floorPlanPlacementImageSpace === true,
+    mapScaleReference: normalizeMapScaleReference(s.mapScaleReference),
     mapShowName: s.mapShowName,
     mapShowQuantity: s.mapShowQuantity,
     mapTheme: s.mapTheme === "light" ? "light" : "dark",
@@ -261,6 +267,7 @@ export function normalizeCustomPlanSnapshotData(
         ? Math.min(100, Math.max(0, Math.round(d.floorPlanOpacityPct)))
         : 100,
     floorPlanPlacementImageSpace: d.floorPlanPlacementImageSpace === true,
+    mapScaleReference: normalizeMapScaleReference(d.mapScaleReference),
     mapShowName: typeof d.mapShowName === "boolean" ? d.mapShowName : base.mapShowName,
     mapShowQuantity: typeof d.mapShowQuantity === "boolean" ? d.mapShowQuantity : base.mapShowQuantity,
     mapTheme: d.mapTheme === "light" ? "light" : "dark",
@@ -292,6 +299,7 @@ export function snapshotToWorkspacePatch(data: CustomPlanSnapshotData): Partial<
     floorPlanDataUrl: data.floorPlanDataUrl,
     floorPlanOpacityPct: data.floorPlanOpacityPct,
     floorPlanPlacementImageSpace: data.floorPlanPlacementImageSpace,
+    mapScaleReference: data.mapScaleReference,
     mapShowName: data.mapShowName,
     mapShowQuantity: data.mapShowQuantity,
     mapTheme: data.mapTheme,
