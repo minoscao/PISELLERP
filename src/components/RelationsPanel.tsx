@@ -37,6 +37,8 @@ import {
   parsePriceTripleString,
 } from "../utils/priceTriple";
 import { ErpCatalogQtyInput } from "./erp/ErpCatalogQtyInput";
+import { SkuSpecificationsEditor } from "./erp/SkuSpecificationsEditor";
+import { inferSkuClass, SKU_CLASS_LABEL, skuFootprintLabel } from "../utils/skuSpecifications";
 import { translate } from "../i18n/bundle";
 import { useT } from "../i18n/useT";
 import { PhotoUploadModal } from "./PhotoUploadModal";
@@ -103,6 +105,12 @@ function emptyRow(): AssociationRow {
     id: crypto.randomUUID(),
     hardwareName: "",
     deviceModel: "",
+    skuClass: "main_device",
+    lengthCm: 300,
+    widthCm: 300,
+    heightCm: null,
+    weightKg: null,
+    powerWatts: null,
     mapLabelAbbrev: null,
     color: DEFAULT_MAP_COLOR,
     productMaterialId: null,
@@ -132,6 +140,12 @@ function persistedRowShape(d: AssociationRow, rowBand: PriceBand): AssociationRo
     id: d.id,
     hardwareName: d.hardwareName.trim(),
     deviceModel: d.deviceModel,
+    skuClass: d.skuClass,
+    lengthCm: d.lengthCm ?? null,
+    widthCm: d.widthCm ?? null,
+    heightCm: d.heightCm ?? null,
+    weightKg: d.weightKg ?? null,
+    powerWatts: d.powerWatts ?? null,
     mapLabelAbbrev: (d.mapLabelAbbrev ?? "").trim() || null,
     color: d.color,
     productMaterialId: d.productMaterialId,
@@ -1111,6 +1125,8 @@ export function RelationsPanel({
         </label>
       </section>
 
+      <SkuSpecificationsEditor value={draft} onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))} compact />
+
       <section className="space-y-1.5 py-3">
         <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-app-muted">
           {t("rel.erpSectionMapAbbrev")}
@@ -1533,6 +1549,8 @@ export function RelationsPanel({
           placeholder={t("rel.placeholderProductModel")}
         />
       </label>
+
+      <SkuSpecificationsEditor value={draft} onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))} />
 
       <label className="flex flex-col gap-1 text-xs text-app-muted">
         {t("rel.erpSectionMapAbbrev")}
@@ -2191,8 +2209,11 @@ export function RelationsPanel({
                             }`}
                           >
                             {categoryTd === false ? null : categoryTd}
-                            <td className="max-w-[min(240px,32vw)] truncate px-3 py-2 text-sm font-medium text-app-text" title={r.deviceModel || r.hardwareName}>
-                              {r.deviceModel || "—"}
+                            <td className="max-w-[min(240px,32vw)] px-3 py-2 text-sm font-medium text-app-text" title={r.deviceModel || r.hardwareName}>
+                              <div className="truncate">{r.deviceModel || "—"}</div>
+                              <div className="mt-0.5 truncate text-[10px] font-normal text-app-muted">
+                                {SKU_CLASS_LABEL[r.skuClass ?? inferSkuClass(r)]} · {skuFootprintLabel(r)}
+                              </div>
                             </td>
                             <td
                               className="max-w-[10rem] truncate px-2 py-2 text-xs text-app-muted"

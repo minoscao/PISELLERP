@@ -236,6 +236,14 @@ export type AssociationRow = {
   hardwareName: string;
   /** 报价汇总表「设备型号」列；空则回退为硬件名称 */
   deviceModel: string;
+  /** SKU logistics and planning class. Stands, mounts and brackets are assistive equipment. */
+  skuClass?: SkuClass;
+  /** Device footprint and technical specifications. Values use cm, kg and W. */
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+  weightKg?: number | null;
+  powerWatts?: number | null;
   /**
    * 地图标记短名（仅地图 / 地图导出）；空则沿用型号或硬件名。
    * 仅附加字段，旧数据无此键时视为空。
@@ -383,6 +391,8 @@ export type SavedCustomPlan = {
   sharedUserIds: string[];
   data: CustomPlanSnapshotData;
 };
+
+export type SkuClass = "main_device" | "accessory" | "consumable";
 
 export type CrmCustomer = {
   id: string;

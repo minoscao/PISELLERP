@@ -1,6 +1,7 @@
 import type { AssociationRow, HardwareAddon, HardwareOption, HardwarePlacement, PriceBand, QuotePriceTier } from "../types";
 import { placementCountForAssociation, placementQty } from "./placementQty";
 import { normalizePriceBandPartial, priceAtTier } from "./priceTriple";
+import { normalizeSkuSpecifications } from "./skuSpecifications";
 
 type RawOption = Partial<HardwareOption> & { priceDelta?: number };
 
@@ -93,7 +94,7 @@ export function normalizeAssociationRow(a: AssociationRow): AssociationRow {
   const productNameForMap = ((a.deviceModel ?? "").trim() || (a.hardwareName ?? "").trim()).slice(0, 120);
   /** 未填写过的地图缩写：与产品名（型号优先）对齐，便于再改短；已有非空缩写保持不变 */
   const mapLabelAbbrev = explicit ?? (productNameForMap || null);
-  return {
+  return normalizeSkuSpecifications({
     ...a,
     mapLabelAbbrev,
     quoteLineTotalOverride,
@@ -106,7 +107,7 @@ export function normalizeAssociationRow(a: AssociationRow): AssociationRow {
     quoteTierMode,
     options: normalizeHardwareOptions(a.options, syncedUnit),
     addons: normalizeHardwareAddons(a.addons),
-  };
+  });
 }
 
 export function normalizePlacement(p: HardwarePlacement): HardwarePlacement {
