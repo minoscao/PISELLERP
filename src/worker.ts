@@ -29,8 +29,20 @@ async function restoreSeedState(env: WorkerEnv, ctx: WorkerContext): Promise<Res
   const seed = await fetch(env.PERSIST_SEED_URL || DEFAULT_PERSIST_SEED_URL, { cache: "no-store" });
   if (!seed.ok || !seed.body) return new Response(null, { status: 404 });
 
-  const [responseBody, storageBody] = seed.body.tee();
   const contentType = seed.headers.get("content-type") || "application/json; charset=utf-8";
+  // An R2 binding is optional while the account has not enabled R2 yet.  Keep
+  // the historical project available by streaming the immutable recovery copy.
+  if (!env.R2) {
+    return new Response(seed.body, {
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": contentType,
+        "X-Pisell-State-Source": "recovery-seed",
+      },
+    });
+  }
+
+  const [responseBody, storageBody] = seed.body.tee();
   ctx.waitUntil(env.R2.put("erp-state/marketing-quote-v1.json", storageBody, {
     httpMetadata: { contentType },
   }));
@@ -57,8 +69,15 @@ export default {
 
       if (pathname === "/api/quote-persist") {
         if (request.method === "GET") {
+          if (!env.R2) return restoreSeedState(env, ctx);
           const response = await getPersistState({ request, env });
           return response.status === 404 ? restoreSeedState(env, ctx) : response;
+        }
+        if (!env.R2) {
+          return Response.json(
+            { error: "Cloud file storage is not enabled for this account yet." },
+            { status: 503, headers: { "Cache-Control": "no-store" } },
+          );
         }
         if (request.method === "PUT") return putPersistState({ request, env });
         if (request.method === "POST") return postPersistState({ request, env });

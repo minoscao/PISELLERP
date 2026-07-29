@@ -4,6 +4,13 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-07-29",
   "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pisellerp-db",
+      "database_id": "9626554b-299e-45d3-beda-6d4f44236027"
+    }
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
