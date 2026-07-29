@@ -159,6 +159,7 @@ function mapFootprintLayout(
   return {
     widthPx,
     heightPx,
+    sizeText: `${lengthCm} × ${widthCm} cm`,
     // If the product outline would be visually smaller than its marker, retain
     // the marker alone instead of creating an unreadable nested outline.
     showFrame: smallerScreenEdge >= iconPx * 1.1,
@@ -1496,8 +1497,14 @@ export function HardwareLayoutPanel({
                 }}
               >
                 <div className="absolute left-0 top-0 h-0.5 w-full bg-app-primary shadow-[0_0_0_1px_rgb(255_255_255_/_0.8)]" />
-                <div className="absolute -left-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-white bg-app-primary shadow" />
-                <div className="absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-white bg-app-primary shadow" />
+                <div
+                  className="absolute h-3 w-3 rounded-full border-2 border-white bg-app-primary shadow"
+                  style={{ left: 0, top: 0, transform: `translate(-50%, -50%) scale(${1 / mapZoom})` }}
+                />
+                <div
+                  className="absolute h-3 w-3 rounded-full border-2 border-white bg-app-primary shadow"
+                  style={{ left: "100%", top: 0, transform: `translate(-50%, -50%) scale(${1 / mapZoom})` }}
+                />
                 <span
                   className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-[calc(100%+5px)] whitespace-nowrap rounded bg-app-primary px-1.5 py-0.5 text-[10px] font-semibold text-app-on-primary shadow"
                   style={{
@@ -1668,13 +1675,25 @@ export function HardwareLayoutPanel({
                       aria-hidden
                       className="pointer-events-none absolute left-0 top-0 border border-dashed"
                       style={{
+                        left: -footprint.widthPx / 2,
+                        top: -footprint.heightPx / 2,
                         width: footprint.widthPx,
                         height: footprint.heightPx,
                         borderColor: accent,
                         borderWidth: Math.max(0.75, 1 / mapZoom),
                         backgroundColor: `${accent}14`,
                       }}
-                    />
+                    >
+                      <span
+                        className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-[calc(100%+4px)] whitespace-nowrap rounded bg-app-surface-2 px-1.5 py-0.5 text-[10px] font-semibold text-app-text shadow-sm"
+                        style={{
+                          transform: `translateX(-50%) translateY(-4px) scale(${1 / mapZoom})`,
+                          transformOrigin: "bottom center",
+                        }}
+                      >
+                        {footprint.sizeText}
+                      </span>
+                    </div>
                   ) : null}
                   <div
                     className="relative z-10"
