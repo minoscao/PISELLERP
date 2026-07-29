@@ -29,7 +29,10 @@ async function restoreSeedState(env: WorkerEnv, ctx: WorkerContext): Promise<Res
   const seed = await fetch(env.PERSIST_SEED_URL || DEFAULT_PERSIST_SEED_URL, { cache: "no-store" });
   if (!seed.ok || !seed.body) return new Response(null, { status: 404 });
 
-  const contentType = seed.headers.get("content-type") || "application/json; charset=utf-8";
+  const upstreamContentType = seed.headers.get("content-type") || "";
+  const contentType = upstreamContentType.includes("json")
+    ? upstreamContentType
+    : "application/json; charset=utf-8";
   // An R2 binding is optional while the account has not enabled R2 yet.  Keep
   // the historical project available by streaming the immutable recovery copy.
   if (!env.R2) {
