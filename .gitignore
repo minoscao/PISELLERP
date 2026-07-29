@@ -6,6 +6,7 @@ data/backups/
 _dbg_img_*.jpeg
 tsconfig.tsbuildinfo
 public/pisellHardwareSeed.json
+public/cloud-assets/
 Pisell Hardware List.xlsx
 Pisell_Branding Guideline_v03 - 副本.pdf
 
