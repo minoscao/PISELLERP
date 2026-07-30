@@ -1496,7 +1496,10 @@ export function HardwareLayoutPanel({
                   transformOrigin: "0 0",
                 }}
               >
-                <div className="absolute left-0 top-0 h-0.5 w-full bg-app-primary shadow-[0_0_0_1px_rgb(255_255_255_/_0.8)]" />
+                <div
+                  className="absolute left-0 top-0 w-full bg-app-primary shadow-[0_0_0_1px_rgb(255_255_255_/_0.8)]"
+                  style={{ height: 1 / mapZoom }}
+                />
                 <div
                   className="absolute h-3 w-3 rounded-full border-2 border-white bg-app-primary shadow"
                   style={{ left: 0, top: 0, transform: `translate(-50%, -50%) scale(${1 / mapZoom})` }}
@@ -1673,15 +1676,18 @@ export function HardwareLayoutPanel({
                   {footprint?.showFrame ? (
                     <div
                       aria-hidden
-                      className="pointer-events-none absolute left-0 top-0 border border-dashed"
+                      className="pointer-events-none absolute left-0 top-0 border border-solid"
                       style={{
                         left: -footprint.widthPx / 2,
                         top: -footprint.heightPx / 2,
                         width: footprint.widthPx,
                         height: footprint.heightPx,
                         borderColor: accent,
-                        borderWidth: Math.max(0.75, 1 / mapZoom),
+                        // Geometry follows the calibrated floor scale, while the
+                        // outline itself remains a constant one-screen-pixel line.
+                        borderWidth: 1 / mapZoom,
                         backgroundColor: `${accent}14`,
+                        boxSizing: "border-box",
                       }}
                     >
                       <span
